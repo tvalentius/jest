@@ -1,9 +1,8 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -79,12 +78,12 @@ const IDVisitor = {
 const FUNCTIONS: Object = Object.create(null);
 FUNCTIONS.mock = args => {
   if (args.length === 1) {
-    return args[0].isStringLiteral();
+    return args[0].isStringLiteral() || args[0].isLiteral();
   } else if (args.length === 2 || args.length === 3) {
     const moduleFactory = args[1];
     invariant(
       moduleFactory.isFunction(),
-      'The second argument of `jest.mock` must be a function.',
+      'The second argument of `jest.mock` must be an inline function.',
     );
 
     const ids = new Set();

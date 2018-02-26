@@ -1,9 +1,8 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -29,13 +28,14 @@ import slash from 'slash';
 import {version as VERSION} from '../package.json';
 import shouldInstrument from './should_instrument';
 import writeFileAtomic from 'write-file-atomic';
+import {sync as realpath} from 'realpath-native';
 
 export type Options = {|
   collectCoverage: boolean,
   collectCoverageFrom: Array<Glob>,
-  collectCoverageOnlyFrom: ?{[key: string]: boolean},
+  collectCoverageOnlyFrom: ?{[key: string]: boolean, __proto__: null},
+  isCoreModule?: boolean,
   isInternalModule?: boolean,
-  mapCoverage: boolean,
 |};
 
 const cache: Map<string, TransformResult> = new Map();
@@ -46,7 +46,7 @@ const ignoreCache: WeakMap<ProjectConfig, ?RegExp> = new WeakMap();
 // To reset the cache for specific changesets (rather than package version).
 const CACHE_VERSION = '1';
 
-class ScriptTransformer {
+export default class ScriptTransformer {
   static EVAL_RESULT_VARIABLE: string;
   _config: ProjectConfig;
   _transformCache: Map<Path, ?Transformer>;
@@ -56,12 +56,7 @@ class ScriptTransformer {
     this._transformCache = new Map();
   }
 
-  _getCacheKey(
-    fileData: string,
-    filename: Path,
-    instrument: boolean,
-    mapCoverage: boolean,
-  ): string {
+  _getCacheKey(fileData: string, filename: Path, instrument: boolean): string {
     if (!configToJsonMap.has(this._config)) {
       // We only need this set of config options that can likely influence
       // cached output instead of all config options.
@@ -76,7 +71,7 @@ class ScriptTransformer {
         .update(
           transformer.getCacheKey(fileData, filename, configString, {
             instrument,
-            mapCoverage,
+            rootDir: this._config.rootDir,
           }),
         )
         .update(CACHE_VERSION)
@@ -87,7 +82,6 @@ class ScriptTransformer {
         .update(fileData)
         .update(configString)
         .update(instrument ? 'instrument' : '')
-        .update(mapCoverage ? 'mapCoverage' : '')
         .update(CACHE_VERSION)
         .digest('hex');
     }
@@ -97,19 +91,13 @@ class ScriptTransformer {
     filename: Path,
     content: string,
     instrument: boolean,
-    mapCoverage: boolean,
   ): Path {
     const baseCacheDir = HasteMap.getCacheFilePath(
       this._config.cacheDirectory,
       'jest-transform-cache-' + this._config.name,
       VERSION,
     );
-    const cacheKey = this._getCacheKey(
-      content,
-      filename,
-      instrument,
-      mapCoverage,
-    );
+    const cacheKey = this._getCacheKey(content, filename, instrument);
     // Create sub folders based on the cacheKey to avoid creating one
     // directory with many files.
     const cacheDir = path.join(baseCacheDir, cacheKey[0] + cacheKey[1]);
@@ -181,22 +169,33 @@ class ScriptTransformer {
     }).code;
   }
 
-  transformSource(
-    filename: Path,
-    content: string,
-    instrument: boolean,
-    mapCoverage: boolean,
-  ) {
+  _getRealPath(filepath: Path): Path {
+    try {
+      return realpath(filepath) || filepath;
+    } catch (err) {
+      return filepath;
+    }
+  }
+
+  transformSource(filepath: Path, content: string, instrument: boolean) {
+    const filename = this._getRealPath(filepath);
     const transform = this._getTransformer(filename);
-    const cacheFilePath = this._getFileCachePath(
-      filename,
-      content,
-      instrument,
-      mapCoverage,
-    );
+    const cacheFilePath = this._getFileCachePath(filename, content, instrument);
     let sourceMapPath = cacheFilePath + '.map';
     // Ignore cache if `config.cache` is set (--no-cache)
     let code = this._config.cache ? readCodeCacheFile(cacheFilePath) : null;
+
+    const shouldCallTransform =
+      transform && shouldTransform(filename, this._config);
+
+    // That means that the transform has a custom instrumentation
+    // logic and will handle it based on `config.collectCoverage` option
+    const transformWillInstrument =
+      shouldCallTransform && transform && transform.canInstrument;
+
+    // If we handle the coverage instrumentation, we should try to map code
+    // coverage against original source with any provided source map
+    const mapCoverage = instrument && !transformWillInstrument;
 
     if (code) {
       // This is broken: we return the code, and a path for the source map
@@ -205,6 +204,7 @@ class ScriptTransformer {
       // two separate processes write concurrently to the same cache files.
       return {
         code,
+        mapCoverage,
         sourceMapPath,
       };
     }
@@ -214,9 +214,10 @@ class ScriptTransformer {
       map: null,
     };
 
-    if (transform && shouldTransform(filename, this._config)) {
+    if (transform && shouldCallTransform) {
       const processed = transform.process(content, filename, this._config, {
         instrument,
+        returnSourceString: false,
       });
 
       if (typeof processed === 'string') {
@@ -231,28 +232,22 @@ class ScriptTransformer {
       }
     }
 
-    if (mapCoverage) {
-      if (!transformed.map) {
-        const inlineSourceMap = convertSourceMap.fromSource(transformed.code);
-        if (inlineSourceMap) {
-          transformed.map = inlineSourceMap.toJSON();
-        }
+    if (!transformed.map) {
+      //Could be a potential freeze here.
+      //See: https://github.com/facebook/jest/pull/5177#discussion_r158883570
+      const inlineSourceMap = convertSourceMap.fromSource(transformed.code);
+      if (inlineSourceMap) {
+        transformed.map = inlineSourceMap.toJSON();
       }
-    } else {
-      transformed.map = null;
     }
 
-    // That means that the transform has a custom instrumentation
-    // logic and will handle it based on `config.collectCoverage` option
-    const transformDidInstrument = transform && transform.canInstrument;
-
-    if (!transformDidInstrument && instrument) {
+    if (!transformWillInstrument && instrument) {
       code = this._instrumentFile(filename, transformed.code);
     } else {
       code = transformed.code;
     }
 
-    if (instrument && transformed.map && mapCoverage) {
+    if (transformed.map) {
       const sourceMapContent =
         typeof transformed.map === 'string'
           ? transformed.map
@@ -266,6 +261,7 @@ class ScriptTransformer {
 
     return {
       code,
+      mapCoverage,
       sourceMapPath,
     };
   }
@@ -277,13 +273,18 @@ class ScriptTransformer {
     fileSource?: string,
   ): TransformResult {
     const isInternalModule = !!(options && options.isInternalModule);
+    const isCoreModule = !!(options && options.isCoreModule);
     const content = stripShebang(
       fileSource || fs.readFileSync(filename, 'utf8'),
     );
+
     let wrappedCode: string;
     let sourceMapPath: ?string = null;
+    let mapCoverage = false;
+
     const willTransform =
       !isInternalModule &&
+      !isCoreModule &&
       (shouldTransform(filename, this._config) || instrument);
 
     try {
@@ -292,17 +293,21 @@ class ScriptTransformer {
           filename,
           content,
           instrument,
-          !!(options && options.mapCoverage),
         );
 
         wrappedCode = wrap(transformedSource.code);
         sourceMapPath = transformedSource.sourceMapPath;
+        mapCoverage = transformedSource.mapCoverage;
       } else {
         wrappedCode = wrap(content);
       }
 
       return {
-        script: new vm.Script(wrappedCode, {displayErrors: true, filename}),
+        mapCoverage,
+        script: new vm.Script(wrappedCode, {
+          displayErrors: true,
+          filename: isCoreModule ? 'jest-nodejs-core-' + filename : filename,
+        }),
         sourceMapPath,
       };
     } catch (e) {
@@ -319,25 +324,32 @@ class ScriptTransformer {
     options: Options,
     fileSource?: string,
   ): TransformResult {
-    const instrument = shouldInstrument(filename, options, this._config);
-    const scriptCacheKey = getScriptCacheKey(
-      filename,
-      this._config,
-      instrument,
-    );
-    let result = cache.get(scriptCacheKey);
+    let scriptCacheKey = null;
+    let instrument = false;
+    let result = '';
+
+    if (!options.isCoreModule) {
+      instrument = shouldInstrument(filename, options, this._config);
+      scriptCacheKey = getScriptCacheKey(filename, this._config, instrument);
+      result = cache.get(scriptCacheKey);
+    }
+
     if (result) {
       return result;
-    } else {
-      result = this._transformAndBuildScript(
-        filename,
-        options,
-        instrument,
-        fileSource,
-      );
-      cache.set(scriptCacheKey, result);
-      return result;
     }
+
+    result = this._transformAndBuildScript(
+      filename,
+      options,
+      instrument,
+      fileSource,
+    );
+
+    if (scriptCacheKey) {
+      cache.set(scriptCacheKey, result);
+    }
+
+    return result;
   }
 }
 
@@ -365,7 +377,10 @@ const stripShebang = content => {
  * could get corrupted, out-of-sync, etc.
  */
 function writeCodeCacheFile(cachePath: Path, code: string) {
-  const checksum = crypto.createHash('md5').update(code).digest('hex');
+  const checksum = crypto
+    .createHash('md5')
+    .update(code)
+    .digest('hex');
   writeCacheFile(cachePath, checksum + '\n' + code);
 }
 
@@ -381,7 +396,10 @@ function readCodeCacheFile(cachePath: Path): ?string {
     return null;
   }
   const code = content.substr(33);
-  const checksum = crypto.createHash('md5').update(code).digest('hex');
+  const checksum = crypto
+    .createHash('md5')
+    .update(code)
+    .digest('hex');
   if (checksum === content.substr(0, 32)) {
     return code;
   }
@@ -398,6 +416,10 @@ const writeCacheFile = (cachePath: Path, fileData: string) => {
   try {
     writeFileAtomic.sync(cachePath, fileData, {encoding: 'utf8'});
   } catch (e) {
+    if (cacheWriteErrorSafeToIgnore(e, cachePath)) {
+      return;
+    }
+
     e.message =
       'jest: failed to cache transform results in: ' +
       cachePath +
@@ -406,6 +428,20 @@ const writeCacheFile = (cachePath: Path, fileData: string) => {
     removeFile(cachePath);
     throw e;
   }
+};
+
+/**
+ * On Windows, renames are not atomic, leading to EPERM exceptions when two
+ * processes attempt to rename to the same target file at the same time.
+ * If the target file exists we can be reasonably sure another process has
+ * legitimately won a cache write race and ignore the error.
+ */
+const cacheWriteErrorSafeToIgnore = (e: Error, cachePath: Path) => {
+  return (
+    process.platform === 'win32' &&
+    e.code === 'EPERM' &&
+    fs.existsSync(cachePath)
+  );
 };
 
 const readCacheFile = (cachePath: Path): ?string => {
@@ -467,5 +503,3 @@ const wrap = content =>
   '\n}});';
 
 ScriptTransformer.EVAL_RESULT_VARIABLE = 'Object.<anonymous>';
-
-module.exports = ScriptTransformer;

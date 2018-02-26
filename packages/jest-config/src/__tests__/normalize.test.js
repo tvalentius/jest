@@ -1,12 +1,13 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  */
-'use strict';
+
+import {escapeStrForRegex} from 'jest-regex-util';
+import normalize from '../normalize';
 
 jest.mock('jest-resolve');
 
@@ -14,9 +15,6 @@ jest.mock('path', () => require.requireActual('path').posix);
 
 const crypto = require('crypto');
 const path = require('path');
-const utils = require('jest-regex-util');
-const normalize = require('../normalize');
-
 const DEFAULT_JS_PATTERN = require('../constants').DEFAULT_JS_PATTERN;
 const DEFAULT_CSS_PATTERN = '^.+\\.(css)$';
 
@@ -37,10 +35,7 @@ const findNodeModule = jest.fn(name => {
 // regular expressions. This little helper function helps us generate the
 // expected strings for checking path patterns.
 function joinForPattern() {
-  return Array.prototype.join.call(
-    arguments,
-    utils.escapeStrForRegex(path.sep),
-  );
+  return Array.prototype.join.call(arguments, escapeStrForRegex(path.sep));
 }
 
 beforeEach(() => {
@@ -188,6 +183,31 @@ describe('collectCoverageOnlyFrom', () => {
     expected[expectedPathFooBar] = true;
 
     expect(options.collectCoverageOnlyFrom).toEqual(expected);
+  });
+});
+
+describe('collectCoverageFrom', () => {
+  it('substitutes <rootDir> tokens', () => {
+    const barBaz = 'bar/baz';
+    const quxQuux = 'qux/quux/';
+    const notQuxQuux = `!${quxQuux}`;
+
+    const {options} = normalize(
+      {
+        collectCoverageFrom: [
+          barBaz,
+          notQuxQuux,
+          `<rootDir>/${barBaz}`,
+          `!<rootDir>/${quxQuux}`,
+        ],
+        rootDir: '/root/path/foo/',
+      },
+      {},
+    );
+
+    const expected = [barBaz, notQuxQuux, barBaz, notQuxQuux];
+
+    expect(options.collectCoverageFrom).toEqual(expected);
   });
 });
 
@@ -383,6 +403,57 @@ describe('coveragePathIgnorePatterns', () => {
   });
 });
 
+describe('watchPathIgnorePatterns', () => {
+  it('does not normalize paths relative to rootDir', () => {
+    // This is a list of patterns, so we can't assume any of them are
+    // directories
+    const {options} = normalize(
+      {
+        rootDir: '/root/path/foo',
+        watchPathIgnorePatterns: ['bar/baz', 'qux/quux'],
+      },
+      {},
+    );
+
+    expect(options.watchPathIgnorePatterns).toEqual([
+      joinForPattern('bar', 'baz'),
+      joinForPattern('qux', 'quux'),
+    ]);
+  });
+
+  it('does not normalize trailing slashes', () => {
+    // This is a list of patterns, so we can't assume any of them are
+    // directories
+    const {options} = normalize(
+      {
+        rootDir: '/root/path/foo',
+        watchPathIgnorePatterns: ['bar/baz', 'qux/quux/'],
+      },
+      {},
+    );
+
+    expect(options.watchPathIgnorePatterns).toEqual([
+      joinForPattern('bar', 'baz'),
+      joinForPattern('qux', 'quux', ''),
+    ]);
+  });
+
+  it('substitutes <rootDir> tokens', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root/path/foo',
+        watchPathIgnorePatterns: ['hasNoToken', '<rootDir>/hasAToken'],
+      },
+      {},
+    );
+
+    expect(options.watchPathIgnorePatterns).toEqual([
+      'hasNoToken',
+      joinForPattern('', 'root', 'path', 'foo', 'hasAToken'),
+    ]);
+  });
+});
+
 describe('testPathIgnorePatterns', () => {
   it('does not normalize paths relative to rootDir', () => {
     // This is a list of patterns, so we can't assume any of them are
@@ -537,6 +608,9 @@ describe('testEnvironment', () => {
       if (name === 'jest-environment-jsdom') {
         return 'node_modules/jest-environment-jsdom';
       }
+      if (name.startsWith('/root')) {
+        return name;
+      }
       return findNodeModule(name);
     });
   });
@@ -565,6 +639,18 @@ describe('testEnvironment', () => {
         {},
       ),
     ).toThrowErrorMatchingSnapshot();
+  });
+
+  it('works with rootDir', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root',
+        testEnvironment: '<rootDir>/testEnvironment.js',
+      },
+      {},
+    );
+
+    expect(options.testEnvironment).toEqual('/root/testEnvironment.js');
   });
 });
 
@@ -789,19 +875,20 @@ describe('preset', () => {
       }
       return '/node_modules/' + name;
     });
-    jest.mock(
+    jest.doMock(
       '/node_modules/react-native/jest-preset.json',
       () => ({
         moduleNameMapper: {b: 'b'},
         modulePathIgnorePatterns: ['b'],
         setupFiles: ['b'],
+        transform: {b: 'b'},
       }),
       {virtual: true},
     );
   });
 
   afterEach(() => {
-    jest.unmock('/node_modules/react-native/jest-preset.json');
+    jest.dontMock('/node_modules/react-native/jest-preset.json');
   });
 
   test('throws when preset not found', () => {
@@ -809,6 +896,22 @@ describe('preset', () => {
       normalize(
         {
           preset: 'doesnt-exist',
+          rootDir: '/root/path/foo',
+        },
+        {},
+      );
+    }).toThrowErrorMatchingSnapshot();
+  });
+
+  test('throws when preset is invalid', () => {
+    jest.doMock('/node_modules/react-native/jest-preset.json', () =>
+      require.requireActual('./jest-preset.json'),
+    );
+
+    expect(() => {
+      normalize(
+        {
+          preset: 'react-native',
           rootDir: '/root/path/foo',
         },
         {},
@@ -836,6 +939,7 @@ describe('preset', () => {
         preset: 'react-native',
         rootDir: '/root/path/foo',
         setupFiles: ['a'],
+        transform: {a: 'a'},
       },
       {},
     );
@@ -845,13 +949,16 @@ describe('preset', () => {
     expect(options.setupFiles.sort()).toEqual([
       '/node_modules/a',
       '/node_modules/b',
-      '/node_modules/regenerator-runtime/runtime',
+    ]);
+    expect(options.transform).toEqual([
+      ['a', '/node_modules/a'],
+      ['b', '/node_modules/b'],
     ]);
   });
 
   test('merges with options and moduleNameMapper preset is overridden by options', () => {
     // Object initializer not used for properties as a workaround for
-    //  sort-keys eslint rule while specifing properties in
+    //  sort-keys eslint rule while specifying properties in
     //  non-alphabetical order for a better test
     const moduleNameMapper = {};
     moduleNameMapper.e = 'ee';
@@ -874,6 +981,32 @@ describe('preset', () => {
       ['a', 'aa'],
     ]);
   });
+
+  test('merges with options and transform preset is overridden by options', () => {
+    /* eslint-disable sort-keys */
+    const transform = {
+      e: 'ee',
+      b: 'bb',
+      c: 'cc',
+      a: 'aa',
+    };
+    /* eslint-disable sort-keys */
+    const {options} = normalize(
+      {
+        preset: 'react-native',
+        rootDir: '/root/path/foo',
+        transform,
+      },
+      {},
+    );
+
+    expect(options.transform).toEqual([
+      ['e', '/node_modules/ee'],
+      ['b', '/node_modules/bb'],
+      ['c', '/node_modules/cc'],
+      ['a', '/node_modules/aa'],
+    ]);
+  });
 });
 
 describe('preset without setupFiles', () => {
@@ -886,8 +1019,8 @@ describe('preset without setupFiles', () => {
   });
 
   beforeAll(() => {
-    jest.mock(
-      '/node_modules/react-native/jest-preset.json',
+    jest.doMock(
+      '/node_modules/react-foo/jest-preset.json',
       () => {
         return {
           moduleNameMapper: {b: 'b'},
@@ -898,10 +1031,14 @@ describe('preset without setupFiles', () => {
     );
   });
 
+  afterAll(() => {
+    jest.dontMock('/node_modules/react-foo/jest-preset.json');
+  });
+
   it('should normalize setupFiles correctly', () => {
     const {options} = normalize(
       {
-        preset: 'react-native',
+        preset: 'react-foo',
         rootDir: '/root/path/foo',
         setupFiles: ['a'],
       },
@@ -910,8 +1047,160 @@ describe('preset without setupFiles', () => {
 
     expect(options).toEqual(
       expect.objectContaining({
-        setupFiles: expect.arrayContaining(['/node_modules/a']),
+        setupFiles: [
+          '/node_modules/regenerator-runtime/runtime',
+          '/node_modules/a',
+        ],
       }),
     );
+  });
+});
+
+describe('watchPlugins', () => {
+  let Resolver;
+  beforeEach(() => {
+    Resolver = require('jest-resolve');
+    Resolver.findNodeModule = jest.fn(name => {
+      if (name.startsWith(path.sep)) {
+        return name;
+      }
+      return path.sep + 'node_modules' + path.sep + name;
+    });
+  });
+
+  it('defaults to undefined', () => {
+    const {options} = normalize({rootDir: '/root'}, {});
+
+    expect(options.watchPlugins).toEqual(undefined);
+  });
+
+  it('normalizes watchPlugins', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root/',
+        watchPlugins: ['my-watch-plugin', '<rootDir>/path/to/plugin'],
+      },
+      {},
+    );
+
+    expect(options.watchPlugins).toEqual([
+      '/node_modules/my-watch-plugin',
+      '/root/path/to/plugin',
+    ]);
+  });
+});
+
+describe('testPathPattern', () => {
+  const initialOptions = {rootDir: '/root'};
+  const consoleLog = console.log;
+
+  beforeEach(() => {
+    console.log = jest.fn();
+  });
+
+  afterEach(() => {
+    console.log = consoleLog;
+  });
+
+  it('defaults to empty', () => {
+    const {options} = normalize(initialOptions, {});
+    expect(options.testPathPattern).toBe('');
+  });
+
+  const cliOptions = [
+    {name: '--testPathPattern', property: 'testPathPattern'},
+    {name: '<regexForTestFiles>', property: '_'},
+  ];
+  for (const opt of cliOptions) {
+    describe(opt.name, () => {
+      it('uses ' + opt.name + ' if set', () => {
+        const argv = {[opt.property]: ['a/b']};
+        const {options} = normalize(initialOptions, argv);
+
+        expect(options.testPathPattern).toBe('a/b');
+      });
+
+      it('ignores invalid regular expressions and logs a warning', () => {
+        const argv = {[opt.property]: ['a(']};
+        const {options} = normalize(initialOptions, argv);
+
+        expect(options.testPathPattern).toBe('');
+        expect(console.log.mock.calls[0][0]).toMatchSnapshot();
+      });
+
+      it('joins multiple ' + opt.name + ' if set', () => {
+        const argv = {testPathPattern: ['a/b', 'c/d']};
+        const {options} = normalize(initialOptions, argv);
+
+        expect(options.testPathPattern).toBe('a/b|c/d');
+      });
+
+      describe('posix', () => {
+        it('should not escape the pattern', () => {
+          const argv = {[opt.property]: ['a\\/b', 'a/b', 'a\\b', 'a\\\\b']};
+          const {options} = normalize(initialOptions, argv);
+
+          expect(options.testPathPattern).toBe('a\\/b|a/b|a\\b|a\\\\b');
+        });
+      });
+
+      describe('win32', () => {
+        beforeEach(() => {
+          jest.mock('path', () => require.requireActual('path').win32);
+          require('jest-resolve').findNodeModule = findNodeModule;
+        });
+
+        afterEach(() => {
+          jest.resetModules();
+        });
+
+        it('preserves any use of "\\"', () => {
+          const argv = {[opt.property]: ['a\\b', 'c\\\\d']};
+          const {options} = require('../normalize').default(
+            initialOptions,
+            argv,
+          );
+
+          expect(options.testPathPattern).toBe('a\\b|c\\\\d');
+        });
+
+        it('replaces POSIX path separators', () => {
+          const argv = {[opt.property]: ['a/b']};
+          const {options} = require('../normalize').default(
+            initialOptions,
+            argv,
+          );
+
+          expect(options.testPathPattern).toBe('a\\\\b');
+        });
+
+        it('replaces POSIX paths in multiple args', () => {
+          const argv = {[opt.property]: ['a/b', 'c/d']};
+          const {options} = require('../normalize').default(
+            initialOptions,
+            argv,
+          );
+
+          expect(options.testPathPattern).toBe('a\\\\b|c\\\\d');
+        });
+      });
+    });
+  }
+
+  it('joins multiple --testPathPatterns and <regexForTestFiles>', () => {
+    const {options} = normalize(initialOptions, {
+      _: ['a', 'b'],
+      testPathPattern: ['c', 'd'],
+    });
+    expect(options.testPathPattern).toBe('a|b|c|d');
+  });
+
+  it('gives precedence to --all', () => {
+    const {options} = normalize(initialOptions, {
+      all: true,
+      onlyChanged: true,
+    });
+
+    expect(options.onlyChanged).toBe(false);
   });
 });

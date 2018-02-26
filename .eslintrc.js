@@ -1,13 +1,12 @@
 /**
  * Copyright (c) 2016-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 const path = require('path');
-const customImportResolver = path.resolve('./eslint_import_resolver');
+const customImportResolver = path.resolve('./eslintImportResolver');
 
 module.exports = {
   extends: [
@@ -22,6 +21,7 @@ module.exports = {
       files: ['*.md'],
       rules: {
         'consistent-return': 0,
+        'flowtype/require-valid-file-annotation': 0,
         'import/no-extraneous-dependencies': 0,
         'import/no-unresolved': 0,
         'jest/no-focused-tests': 0,
@@ -33,7 +33,6 @@ module.exports = {
         'react/jsx-no-undef': 0,
         'react/react-in-jsx-scope': 0,
         'sort-keys': 0,
-        'unicorn/filename-case': 0,
       },
     },
     {
@@ -42,45 +41,31 @@ module.exports = {
         'babel/func-params-comma-dangle': 0,
         'import/no-unresolved': [2, {ignore: ['^react-native$']}],
         'import/order': 0,
-        'unicorn/filename-case': 0,
       },
     },
     {
-      files: ['scripts/**/*', 'integration_tests/**/*'],
+      files: ['scripts/**/*', 'integration-tests/**/*'],
       rules: {
         'babel/func-params-comma-dangle': 0,
-        'unicorn/filename-case': 0,
       },
     },
     {
-      files: [
-        '**/__mocks__/**/*',
-        'website/**/*',
-        '**/jest-runtime/**/*',
-        '**/src/Console*',
-        'packages/jest-cli/src/lib/Prompt.js',
-        'packages/jest-cli/src/reporters/Status.js',
-        'packages/jest-editor-support/src/Process.js',
-        'packages/jest-editor-support/src/Runner.js',
-        'packages/jest-editor-support/src/Settings.js',
-        'packages/jest-jasmine2/src/jasmine/Env.js',
-        'packages/jest-jasmine2/src/jasmine/Spec.js',
-        'packages/jest-jasmine2/src/jasmine/Suite.js',
-        'packages/jest-jasmine2/src/jasmine/Timer.js',
-        'packages/jest-snapshot/src/State.js',
-      ],
+      files: 'types/**/*',
       rules: {
-        'unicorn/filename-case': 0,
+        'import/no-extraneous-dependencies': 0,
       },
     },
     {
-      excludedFiles: 'integration_tests/__tests__/**/*',
+      excludedFiles: [
+        'integration-tests/__tests__/**/*',
+        'website/versioned_docs/**/*.md',
+      ],
       files: [
         'examples/**/*',
         'scripts/**/*',
-        'integration_tests/*/**/*',
+        'integration-tests/*/**/*',
         'website/*/**/*',
-        'eslint_import_resolver.js',
+        'eslintImportResolver.js',
       ],
       rules: {
         'prettier/prettier': [
@@ -96,7 +81,7 @@ module.exports = {
     },
     {
       files: [
-        'integration_tests/__tests__/**/*',
+        'integration-tests/__tests__/**/*',
         'packages/babel-jest/**/*.test.js',
         'packages/babel-plugin-jest-hoist/**/*.test.js',
         'packages/babel-preset-jest/**/*.test.js',
@@ -118,7 +103,7 @@ module.exports = {
       files: [
         'website/**',
         '**/__tests__/**',
-        'integration_tests/**',
+        'integration-tests/**',
         '**/pretty-format/perf/**',
       ],
       rules: {
@@ -127,14 +112,11 @@ module.exports = {
     },
   ],
   parser: 'babel-eslint',
-  plugins: ['markdown', 'import', 'unicorn', 'prettier'],
+  plugins: ['markdown', 'import', 'prettier'],
   rules: {
     'flowtype/boolean-style': 2,
     'flowtype/no-primitive-constructor-types': 2,
     'flowtype/require-valid-file-annotation': 2,
-    // These has to be disabled until the whole code base is converted to ESM
-    'import/default': 0,
-    'import/named': 0,
     'import/no-duplicates': 2,
     'import/no-extraneous-dependencies': [
       2,
@@ -144,16 +126,16 @@ module.exports = {
           '**/__mocks__/**',
           '**/?(*.)(spec|test).js?(x)',
           'scripts/**',
-          'eslint_import_resolver.js',
-          'test_setup_file.js',
+          'eslintImportResolver.js',
+          'testSetupFile.js',
         ],
       },
     ],
-    'import/no-unresolved': [2, {ignore: ['^types/']}],
     // This has to be disabled until all type and module imports are combined
     // https://github.com/benmosher/eslint-plugin-import/issues/645
     'import/order': 0,
     'no-console': 0,
+    'no-unused-vars': 2,
     'prettier/prettier': [
       2,
       {
@@ -163,7 +145,6 @@ module.exports = {
         trailingComma: 'all',
       },
     ],
-    'unicorn/filename-case': [2, {case: 'snakeCase'}],
   },
   settings: {
     'import/resolver': {

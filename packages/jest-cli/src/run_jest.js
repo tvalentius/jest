@@ -1,9 +1,8 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -14,14 +13,18 @@ import type {GlobalConfig} from 'types/Config';
 import type {AggregatedResult} from 'types/TestResult';
 import type TestWatcher from './test_watcher';
 
+import chalk from 'chalk';
 import path from 'path';
 import {Console, formatTestResults} from 'jest-util';
-import chalk from 'chalk';
+import exit from 'exit';
 import fs from 'graceful-fs';
+import getNoTestsFoundMessage from './get_no_test_found_message';
 import SearchSource from './search_source';
 import TestScheduler from './test_scheduler';
 import TestSequencer from './test_sequencer';
 import {makeEmptyAggregatedTestResult} from './test_result_helpers';
+import FailedTestsCache from './failed_tests_cache';
+import JestHooks, {type JestHookEmitter} from './jest_hooks';
 
 const setConfig = (contexts, newConfig) =>
   contexts.forEach(
@@ -31,83 +34,36 @@ const setConfig = (contexts, newConfig) =>
       )),
   );
 
-const getNoTestsFoundMessage = (testRunData, globalConfig) => {
-  if (globalConfig.onlyChanged) {
-    return (
-      chalk.bold(
-        'No tests found related to files changed since last commit.\n',
-      ) +
-      chalk.dim(
-        globalConfig.watch
-          ? 'Press `a` to run all tests, or run Jest with `--watchAll`.'
-          : 'Run Jest without `-o` or with `--all` to run all tests.',
-      )
-    );
-  }
-
-  const pluralize = (word: string, count: number, ending: string) =>
-    `${count} ${word}${count === 1 ? '' : ending}`;
-  const individualResults = testRunData.map(testRun => {
-    const stats = testRun.matches.stats || {};
-    const config = testRun.context.config;
-    const statsMessage = Object.keys(stats)
-      .map(key => {
-        if (key === 'roots' && config.roots.length === 1) {
-          return null;
-        }
-        const value = config[key];
-        if (value) {
-          const matches = pluralize('match', stats[key], 'es');
-          return `  ${key}: ${chalk.yellow(value)} - ${matches}`;
-        }
-        return null;
-      })
-      .filter(line => line)
-      .join('\n');
-
-    return testRun.matches.total
-      ? `In ${chalk.bold(config.rootDir)}\n` +
-        `  ${pluralize('file', testRun.matches.total || 0, 's')} checked.\n` +
-        statsMessage
-      : `No files found in ${config.rootDir}.\n` +
-        `Make sure Jest's configuration does not exclude this directory.` +
-        `\nTo set up Jest, make sure a package.json file exists.\n` +
-        `Jest Documentation: ` +
-        `facebook.github.io/jest/docs/configuration.html`;
-  });
-  return (
-    chalk.bold('No tests found') +
-    '\n' +
-    individualResults.join('\n') +
-    '\n' +
-    `Pattern: ${chalk.yellow(globalConfig.testPathPattern)} - 0 matches`
-  );
-};
-
 const getTestPaths = async (
   globalConfig,
   context,
   outputStream,
   changedFilesPromise,
+  jestHooks,
 ) => {
   const source = new SearchSource(context);
-  let data = await source.getTestPaths(globalConfig, changedFilesPromise);
-  if (!data.tests.length) {
-    if (globalConfig.onlyChanged && data.noSCM) {
-      if (globalConfig.watch) {
-        data = await source.getTestPaths(globalConfig);
-      } else {
-        new Console(outputStream, outputStream).log(
-          'Jest can only find uncommitted changed files in a git or hg ' +
-            'repository. If you make your project a git or hg ' +
-            'repository (`git init` or `hg init`), Jest will be able ' +
-            'to only run tests related to files changed since the last ' +
-            'commit.',
-        );
-      }
-    }
+  const data = await source.getTestPaths(globalConfig, changedFilesPromise);
+
+  if (!data.tests.length && globalConfig.onlyChanged && data.noSCM) {
+    new Console(outputStream, outputStream).log(
+      'Jest can only find uncommitted changed files in a git or hg ' +
+        'repository. If you make your project a git or hg ' +
+        'repository (`git init` or `hg init`), Jest will be able ' +
+        'to only run tests related to files changed since the last ' +
+        'commit.',
+    );
   }
-  return data;
+
+  const shouldTestArray = await Promise.all(
+    data.tests.map(test => jestHooks.shouldRunTestSuite(test.path)),
+  );
+
+  const filteredTests = data.tests.filter((test, i) => shouldTestArray[i]);
+
+  return Object.assign({}, data, {
+    allTests: filteredTests.length,
+    tests: filteredTests,
+  });
 };
 
 const processResults = (runResults, options) => {
@@ -121,7 +77,7 @@ const processResults = (runResults, options) => {
       const filePath = path.resolve(process.cwd(), outputFile);
 
       fs.writeFileSync(filePath, JSON.stringify(formatTestResults(runResults)));
-      process.stdout.write(
+      options.outputStream.write(
         `Test results written to: ` +
           `${path.relative(process.cwd(), filePath)}\n`,
       );
@@ -132,25 +88,49 @@ const processResults = (runResults, options) => {
   return options.onComplete && options.onComplete(runResults);
 };
 
-const runJest = async ({
+const testSchedulerContext = {
+  firstRun: true,
+  previousSuccess: true,
+};
+
+export default (async function runJest({
   contexts,
   globalConfig,
   outputStream,
   testWatcher,
+  jestHooks = new JestHooks().getEmitter(),
   startRun,
   changedFilesPromise,
   onComplete,
+  failedTestsCache,
 }: {
   globalConfig: GlobalConfig,
   contexts: Array<Context>,
   outputStream: stream$Writable | tty$WriteStream,
   testWatcher: TestWatcher,
+  jestHooks?: JestHookEmitter,
   startRun: (globalConfig: GlobalConfig) => *,
   changedFilesPromise: ?ChangedFilesPromise,
   onComplete: (testResults: AggregatedResult) => any,
-}) => {
+  failedTestsCache: ?FailedTestsCache,
+}) {
   const sequencer = new TestSequencer();
   let allTests = [];
+
+  if (changedFilesPromise && globalConfig.watch) {
+    const {repos} = await changedFilesPromise;
+    const noSCM = Object.keys(repos).every(scm => repos[scm].size === 0);
+    if (noSCM) {
+      process.stderr.write(
+        '\n' +
+          chalk.bold('--watch') +
+          ' is not supported without git/hg, please use --watchAll ' +
+          '\n',
+      );
+      exit(1);
+    }
+  }
+
   const testRunData = await Promise.all(
     contexts.map(async context => {
       const matches = await getTestPaths(
@@ -158,6 +138,7 @@ const runJest = async ({
         context,
         outputStream,
         changedFilesPromise,
+        jestHooks,
       );
       allTests = allTests.concat(matches.tests);
       return {context, matches};
@@ -167,21 +148,40 @@ const runJest = async ({
   allTests = sequencer.sort(allTests);
 
   if (globalConfig.listTests) {
-    const testsPaths = allTests.map(test => test.path);
+    const testsPaths = Array.from(new Set(allTests.map(test => test.path)));
     if (globalConfig.json) {
-      outputStream.write(JSON.stringify(testsPaths));
+      console.log(JSON.stringify(testsPaths));
     } else {
-      outputStream.write(testsPaths.join('\n'));
+      console.log(testsPaths.join('\n'));
     }
 
     onComplete && onComplete(makeEmptyAggregatedTestResult());
     return null;
   }
 
+  if (globalConfig.onlyFailures && failedTestsCache) {
+    allTests = failedTestsCache.filterTests(allTests);
+    globalConfig = failedTestsCache.updateConfig(globalConfig);
+  }
+
   if (!allTests.length) {
-    new Console(outputStream, outputStream).log(
-      getNoTestsFoundMessage(testRunData, globalConfig),
+    const noTestsFoundMessage = getNoTestsFoundMessage(
+      testRunData,
+      globalConfig,
     );
+
+    if (
+      globalConfig.passWithNoTests ||
+      globalConfig.findRelatedTests ||
+      globalConfig.lastCommit ||
+      globalConfig.onlyChanged
+    ) {
+      new Console(outputStream, outputStream).log(noTestsFoundMessage);
+    } else {
+      new Console(outputStream, outputStream).error(noTestsFoundMessage);
+
+      exit(1);
+    }
   } else if (
     allTests.length === 1 &&
     globalConfig.silent !== true &&
@@ -193,23 +193,36 @@ const runJest = async ({
   }
 
   // When using more than one context, make all printed paths relative to the
-  // current cwd. rootDir is only used as a token during normalization and
-  // has no special meaning afterwards except for printing information to the
-  // CLI.
-  setConfig(contexts, {rootDir: process.cwd()});
-
-  const results = await new TestScheduler(globalConfig, {
-    startRun,
-  }).scheduleTests(allTests, testWatcher);
+  // current cwd. Do not modify rootDir, since will be used by custom resolvers.
+  // If --runInBand is true, the resolver saved a copy during initialization,
+  // however, if it is running on spawned processes, the initiation of the
+  // custom resolvers is done within each spawned process and it needs the
+  // original value of rootDir. Instead, use the {cwd: Path} property to resolve
+  // paths when printing.
+  setConfig(contexts, {cwd: process.cwd()});
+  if (globalConfig.globalSetup) {
+    // $FlowFixMe
+    await require(globalConfig.globalSetup)();
+  }
+  const results = await new TestScheduler(
+    globalConfig,
+    {
+      startRun,
+    },
+    testSchedulerContext,
+  ).scheduleTests(allTests, testWatcher);
 
   sequencer.cacheResults(allTests, results);
 
+  if (globalConfig.globalTeardown) {
+    // $FlowFixMe
+    await require(globalConfig.globalTeardown)();
+  }
   return processResults(results, {
     isJSON: globalConfig.json,
     onComplete,
     outputFile: globalConfig.outputFile,
+    outputStream,
     testResultsProcessor: globalConfig.testResultsProcessor,
   });
-};
-
-module.exports = runJest;
+});

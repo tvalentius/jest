@@ -1,9 +1,8 @@
 /**
- * Copyright (c) 2014, Facebook, Inc. All rights reserved.
+ * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -18,7 +17,8 @@ import {NO_DIFF_MESSAGE, SIMILAR_MESSAGE} from './constants';
 
 const {
   AsymmetricMatcher,
-  HTMLElement,
+  DOMCollection,
+  DOMElement,
   Immutable,
   ReactElement,
   ReactTestComponent,
@@ -27,18 +27,27 @@ const {
 const PLUGINS = [
   ReactTestComponent,
   ReactElement,
-  HTMLElement,
+  DOMElement,
+  DOMCollection,
   Immutable,
   AsymmetricMatcher,
 ];
 const FORMAT_OPTIONS = {
   plugins: PLUGINS,
 };
+const FORMAT_OPTIONS_0 = Object.assign({}, FORMAT_OPTIONS, {
+  indent: 0,
+});
 const FALLBACK_FORMAT_OPTIONS = {
   callToJSON: false,
   maxDepth: 10,
   plugins: PLUGINS,
 };
+const FALLBACK_FORMAT_OPTIONS_0 = Object.assign({}, FALLBACK_FORMAT_OPTIONS, {
+  indent: 0,
+});
+
+const MULTILINE_REGEXP = /[\r\n]/;
 
 // Generate a string that will highlight the difference between two values
 // with green and red. (similar to how github does code diffing)
@@ -79,9 +88,9 @@ function diff(a: any, b: any, options: ?DiffOptions): ?string {
 
   switch (aType) {
     case 'string':
-      const multiline = a.match(/[\r\n]/) !== -1 && b.indexOf('\n') !== -1;
+      const multiline = MULTILINE_REGEXP.test(a) && b.indexOf('\n') !== -1;
       if (multiline) {
-        return diffStrings(String(a), String(b), options);
+        return diffStrings(a, b, options);
       }
       return null;
     case 'number':
@@ -110,9 +119,13 @@ function compareObjects(a: Object, b: Object, options: ?DiffOptions) {
 
   try {
     diffMessage = diffStrings(
-      prettyFormat(a, FORMAT_OPTIONS),
-      prettyFormat(b, FORMAT_OPTIONS),
+      prettyFormat(a, FORMAT_OPTIONS_0),
+      prettyFormat(b, FORMAT_OPTIONS_0),
       options,
+      {
+        a: prettyFormat(a, FORMAT_OPTIONS),
+        b: prettyFormat(b, FORMAT_OPTIONS),
+      },
     );
   } catch (e) {
     hasThrown = true;
@@ -122,9 +135,13 @@ function compareObjects(a: Object, b: Object, options: ?DiffOptions) {
   // without calling `toJSON`. It's also possible that toJSON might throw.
   if (!diffMessage || diffMessage === NO_DIFF_MESSAGE) {
     diffMessage = diffStrings(
-      prettyFormat(a, FALLBACK_FORMAT_OPTIONS),
-      prettyFormat(b, FALLBACK_FORMAT_OPTIONS),
+      prettyFormat(a, FALLBACK_FORMAT_OPTIONS_0),
+      prettyFormat(b, FALLBACK_FORMAT_OPTIONS_0),
       options,
+      {
+        a: prettyFormat(a, FALLBACK_FORMAT_OPTIONS),
+        b: prettyFormat(b, FALLBACK_FORMAT_OPTIONS),
+      },
     );
     if (diffMessage !== NO_DIFF_MESSAGE && !hasThrown) {
       diffMessage = SIMILAR_MESSAGE + '\n\n' + diffMessage;

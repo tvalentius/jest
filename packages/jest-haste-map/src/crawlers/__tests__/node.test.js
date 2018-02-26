@@ -1,15 +1,14 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  */
 
 'use strict';
 
-const skipOnWindows = require('../../../../../scripts/skip_on_windows');
+const SkipOnWindows = require('../../../../../scripts/SkipOnWindows');
 
 jest.mock('child_process', () => ({
   spawn: jest.fn((cmd, args) => {
@@ -73,10 +72,13 @@ let nodeCrawl;
 let childProcess;
 
 describe('node crawler', () => {
-  skipOnWindows.suite();
+  SkipOnWindows.suite();
 
   beforeEach(() => {
     jest.resetModules();
+
+    // Remove the "process.platform" property descriptor so it can be writable.
+    delete process.platform;
 
     mockResponse = [
       '/fruits/pear.js',
@@ -199,7 +201,7 @@ describe('node crawler', () => {
     });
   });
 
-  it('completes with emtpy roots', () => {
+  it('completes with empty roots', () => {
     process.platform = 'win32';
 
     nodeCrawl = require('../node');

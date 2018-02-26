@@ -1,15 +1,19 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
 
 import type {Path, ProjectConfig} from 'types/Config';
-import type {TransformOptions} from 'types/Transform';
+import type {
+  CacheKeyOptions,
+  Transformer,
+  TransformOptions,
+  TransformedSource,
+} from 'types/Transform';
 
 import crypto from 'crypto';
 import fs from 'fs';
@@ -24,7 +28,7 @@ const BABEL_CONFIG_KEY = 'babel';
 const PACKAGE_JSON = 'package.json';
 const THIS_FILE = fs.readFileSync(__filename);
 
-const createTransformer = (options: any) => {
+const createTransformer = (options: any): Transformer => {
   const cache = Object.create(null);
 
   const getBabelRC = filename => {
@@ -70,8 +74,7 @@ const createTransformer = (options: any) => {
   options = Object.assign({}, options, {
     plugins: (options && options.plugins) || [],
     presets: ((options && options.presets) || []).concat([jestPreset]),
-    retainLines: true,
-    sourceMaps: 'inline',
+    sourceMaps: 'both',
   });
   delete options.cacheDirectory;
   delete options.filename;
@@ -82,13 +85,15 @@ const createTransformer = (options: any) => {
       fileData: string,
       filename: Path,
       configString: string,
-      {instrument}: TransformOptions,
+      {instrument, rootDir}: CacheKeyOptions,
     ): string {
       return crypto
         .createHash('md5')
         .update(THIS_FILE)
         .update('\0', 'utf8')
         .update(fileData)
+        .update('\0', 'utf8')
+        .update(path.relative(rootDir, filename))
         .update('\0', 'utf8')
         .update(configString)
         .update('\0', 'utf8')
@@ -101,9 +106,12 @@ const createTransformer = (options: any) => {
       src: string,
       filename: Path,
       config: ProjectConfig,
-      transformOptions: TransformOptions,
-    ): string {
-      if (babelUtil && !babelUtil.canCompile(filename)) {
+      transformOptions?: TransformOptions,
+    ): string | TransformedSource {
+      const altExts = config.moduleFileExtensions.map(
+        extension => '.' + extension,
+      );
+      if (babelUtil && !babelUtil.canCompile(filename, altExts)) {
         return src;
       }
 
@@ -123,7 +131,19 @@ const createTransformer = (options: any) => {
         ]);
       }
 
-      return babelTransform(src, theseOptions).code;
+      // babel v7 might return null in the case when the file has been ignored.
+      const transformResult = babelTransform(src, theseOptions);
+
+      if (!transformResult) {
+        return src;
+      }
+
+      const shouldReturnCodeOnly =
+        transformOptions == null ||
+        transformOptions.returnSourceString == null ||
+        transformOptions.returnSourceString === true;
+
+      return shouldReturnCodeOnly ? transformResult.code : transformResult;
     },
   };
 };

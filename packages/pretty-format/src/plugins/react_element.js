@@ -1,9 +1,8 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -39,11 +38,11 @@ const getType = element => {
   if (typeof element.type === 'function') {
     return element.type.displayName || element.type.name || 'Unknown';
   }
-  return 'Unknown';
+  return 'UNDEFINED';
 };
 
 export const serialize = (
-  element: React$Element<*>,
+  element: React$Element<any>,
   config: Config,
   indentation: string,
   depth: number,
@@ -55,7 +54,9 @@ export const serialize = (
     : printElement(
         getType(element),
         printProps(
-          Object.keys(element.props).filter(key => key !== 'children').sort(),
+          Object.keys(element.props)
+            .filter(key => key !== 'children')
+            .sort(),
           element.props,
           config,
           indentation + config.indent,

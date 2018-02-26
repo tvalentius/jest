@@ -1,9 +1,8 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -13,9 +12,10 @@ import type {OptionsReceived} from 'types/PrettyFormat';
 const React = require('react');
 const renderer = require('react-test-renderer');
 
+const elementSymbol = Symbol.for('react.element');
 const testSymbol = Symbol.for('react.test.json');
 
-const prettyFormat = require('../');
+const prettyFormat = require('..');
 const {ReactElement, ReactTestComponent} = prettyFormat.plugins;
 
 const formatElement = (element: any, options?: OptionsReceived) =>
@@ -294,12 +294,10 @@ test('supports a single element with custom React elements with a child', () => 
   );
 });
 
-test('supports Unknown element', () => {
-  // Suppress React.createElement(undefined) console error
-  const consoleError = console.error;
-  (console: Object).error = jest.fn();
-  expect(formatElement(React.createElement(undefined))).toEqual('<Unknown />');
-  (console: Object).error = consoleError;
+test('supports undefined element type', () => {
+  expect(formatElement({$$typeof: elementSymbol, props: {}})).toEqual(
+    '<UNDEFINED />',
+  );
 });
 
 test('supports a single element with React elements with a child', () => {

@@ -1,9 +1,8 @@
 /**
- * Copyright (c) 2014, Facebook, Inc. All rights reserved.
+ * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
@@ -13,7 +12,8 @@ import getType from 'jest-get-type';
 import prettyFormat from 'pretty-format';
 const {
   AsymmetricMatcher,
-  HTMLElement,
+  DOMCollection,
+  DOMElement,
   Immutable,
   ReactElement,
   ReactTestComponent,
@@ -22,15 +22,14 @@ const {
 const PLUGINS = [
   ReactTestComponent,
   ReactElement,
-  HTMLElement,
+  DOMElement,
+  DOMCollection,
   Immutable,
   AsymmetricMatcher,
 ];
 
-const EXPECTED_COLOR = chalk.green;
-const EXPECTED_BG = chalk.bgGreen;
-const RECEIVED_COLOR = chalk.red;
-const RECEIVED_BG = chalk.bgRed;
+export const EXPECTED_COLOR = chalk.green;
+export const RECEIVED_COLOR = chalk.red;
 
 const NUMBERS = [
   'zero',
@@ -49,11 +48,11 @@ const NUMBERS = [
   'thirteen',
 ];
 
-const SUGGEST_TO_EQUAL = chalk.dim(
+export const SUGGEST_TO_EQUAL = chalk.dim(
   'Looks like you wanted to test for object/array equality with strict `toBe` matcher. You probably need to use `toEqual` instead.',
 );
 
-const stringify = (object: any, maxDepth?: number = 10): string => {
+export const stringify = (object: any, maxDepth?: number = 10): string => {
   const MAX_LENGTH = 10000;
   let result;
 
@@ -77,15 +76,15 @@ const stringify = (object: any, maxDepth?: number = 10): string => {
     : result;
 };
 
-const highlightTrailingWhitespace = (text: string, bgColor: Function): string =>
-  text.replace(/\s+$/gm, bgColor('$&'));
+export const highlightTrailingWhitespace = (text: string): string =>
+  text.replace(/\s+$/gm, chalk.inverse('$&'));
 
-const printReceived = (object: any) =>
-  highlightTrailingWhitespace(RECEIVED_COLOR(stringify(object)), RECEIVED_BG);
-const printExpected = (value: any) =>
-  highlightTrailingWhitespace(EXPECTED_COLOR(stringify(value)), EXPECTED_BG);
+export const printReceived = (object: any) =>
+  RECEIVED_COLOR(highlightTrailingWhitespace(stringify(object)));
+export const printExpected = (value: any) =>
+  EXPECTED_COLOR(highlightTrailingWhitespace(stringify(value)));
 
-const printWithType = (
+export const printWithType = (
   name: string,
   received: any,
   print: (value: any) => string,
@@ -99,7 +98,7 @@ const printWithType = (
   );
 };
 
-const ensureNoExpected = (expected: any, matcherName: string) => {
+export const ensureNoExpected = (expected: any, matcherName: string) => {
   matcherName || (matcherName = 'This');
   if (typeof expected !== 'undefined') {
     throw new Error(
@@ -111,7 +110,7 @@ const ensureNoExpected = (expected: any, matcherName: string) => {
   }
 };
 
-const ensureActualIsNumber = (actual: any, matcherName: string) => {
+export const ensureActualIsNumber = (actual: any, matcherName: string) => {
   matcherName || (matcherName = 'This matcher');
   if (typeof actual !== 'number') {
     throw new Error(
@@ -123,7 +122,7 @@ const ensureActualIsNumber = (actual: any, matcherName: string) => {
   }
 };
 
-const ensureExpectedIsNumber = (expected: any, matcherName: string) => {
+export const ensureExpectedIsNumber = (expected: any, matcherName: string) => {
   matcherName || (matcherName = 'This matcher');
   if (typeof expected !== 'number') {
     throw new Error(
@@ -135,50 +134,40 @@ const ensureExpectedIsNumber = (expected: any, matcherName: string) => {
   }
 };
 
-const ensureNumbers = (actual: any, expected: any, matcherName: string) => {
+export const ensureNumbers = (
+  actual: any,
+  expected: any,
+  matcherName: string,
+) => {
   ensureActualIsNumber(actual, matcherName);
   ensureExpectedIsNumber(expected, matcherName);
 };
 
-const pluralize = (word: string, count: number) =>
+export const pluralize = (word: string, count: number) =>
   (NUMBERS[count] || count) + ' ' + word + (count === 1 ? '' : 's');
 
-const matcherHint = (
+export const matcherHint = (
   matcherName: string,
   received: string = 'received',
   expected: string = 'expected',
-  options: ?{
-    secondArgument?: ?string,
+  options: {
+    comment?: string,
     isDirectExpectCall?: boolean,
-  },
+    isNot?: boolean,
+    secondArgument?: ?string,
+  } = {},
 ) => {
-  const secondArgument = options && options.secondArgument;
-  const isDirectExpectCall = options && options.isDirectExpectCall;
+  const {comment, isDirectExpectCall, isNot, secondArgument} = options;
   return (
     chalk.dim('expect' + (isDirectExpectCall ? '' : '(')) +
     RECEIVED_COLOR(received) +
-    chalk.dim((isDirectExpectCall ? '' : ')') + matcherName + '(') +
+    (isNot
+      ? `${chalk.dim(').')}not${chalk.dim(matcherName + '(')}`
+      : chalk.dim((isDirectExpectCall ? '' : ')') + matcherName + '(')) +
     EXPECTED_COLOR(expected) +
-    (secondArgument ? `, ${EXPECTED_COLOR(secondArgument)}` : '') +
-    chalk.dim(')')
+    (secondArgument
+      ? `${chalk.dim(', ')}${EXPECTED_COLOR(secondArgument)}`
+      : '') +
+    chalk.dim(`)${comment ? ` // ${comment}` : ''}`)
   );
-};
-
-module.exports = {
-  EXPECTED_BG,
-  EXPECTED_COLOR,
-  RECEIVED_BG,
-  RECEIVED_COLOR,
-  SUGGEST_TO_EQUAL,
-  ensureActualIsNumber,
-  ensureExpectedIsNumber,
-  ensureNoExpected,
-  ensureNumbers,
-  highlightTrailingWhitespace,
-  matcherHint,
-  pluralize,
-  printExpected,
-  printReceived,
-  printWithType,
-  stringify,
 };

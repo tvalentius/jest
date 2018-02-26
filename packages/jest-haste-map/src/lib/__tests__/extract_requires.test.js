@@ -2,15 +2,14 @@
  * Copyright (c) 2015-present, Facebook, Inc.
  * All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  */
 'use strict';
 
-const extractRequires = require('../extract_requires');
+import extractRequires from '../extract_requires';
 
 it('extracts both requires and imports from code', () => {
   const code = `
@@ -110,4 +109,14 @@ it('understands require.requireActual', () => {
 it('understands jest.requireActual', () => {
   const code = `jest.requireActual('whiskey');`;
   expect(extractRequires(code)).toEqual(['whiskey']);
+});
+
+it('understands require.requireMock', () => {
+  const code = `require.requireMock('cheeseburger');`;
+  expect(extractRequires(code)).toEqual(['cheeseburger']);
+});
+
+it('understands jest.requireMock', () => {
+  const code = `jest.requireMock('scotch');`;
+  expect(extractRequires(code)).toEqual(['scotch']);
 });

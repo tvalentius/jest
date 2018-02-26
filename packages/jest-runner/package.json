@@ -1,22 +1,23 @@
 {
   "name": "jest-runner",
-  "version": "20.0.4",
+  "version": "22.4.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/facebook/jest.git"
   },
-  "license": "BSD-3-Clause",
+  "license": "MIT",
   "main": "build/index.js",
   "dependencies": {
-    "jest-config": "^20.0.4",
-    "jest-docblock": "^20.0.3",
-    "jest-haste-map": "^20.0.4",
-    "jest-jasmine2": "^20.0.4",
-    "jest-message-util": "^20.0.3",
-    "jest-runtime": "^20.0.4",
-    "jest-util": "^20.0.3",
-    "pify": "^2.3.0",
-    "throat": "^3.0.0",
-    "worker-farm": "^1.3.1"
+    "exit": "^0.1.2",
+    "jest-config": "^22.4.2",
+    "jest-docblock": "^22.4.0",
+    "jest-haste-map": "^22.4.2",
+    "jest-jasmine2": "^22.4.2",
+    "jest-leak-detector": "^22.4.0",
+    "jest-message-util": "^22.4.0",
+    "jest-runtime": "^22.4.2",
+    "jest-util": "^22.4.1",
+    "jest-worker": "^22.2.2",
+    "throat": "^4.0.0"
   }
 }
