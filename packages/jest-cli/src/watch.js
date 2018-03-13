@@ -154,6 +154,18 @@ export default function watch(
   let shouldDisplayWatchUsage = true;
   let isWatchUsageDisplayed = false;
 
+  const emitFileChange = () => {
+    if (hooks.isUsed('fileChange')) {
+      const projects = searchSources.map(({context, searchSource}) => ({
+        config: context.config,
+        testPaths: searchSource.findMatchingTests('').tests.map(t => t.path),
+      }));
+      hooks.getEmitter().fileChange({projects});
+    }
+  };
+
+  emitFileChange();
+
   hasteMapInstances.forEach((hasteMapInstance, index) => {
     hasteMapInstance.on('change', ({eventsQueue, hasteFS, moduleMap}) => {
       const validPaths = eventsQueue.filter(({filePath}) => {
@@ -176,6 +188,7 @@ export default function watch(
           context,
           searchSource: new SearchSource(context),
         };
+        emitFileChange();
         startRun(globalConfig);
       }
     });

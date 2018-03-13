@@ -29,11 +29,40 @@ Each call is represented by an array of arguments that were passed during the
 call.
 
 For example: A mock function `f` that has been called twice, with the arguments
-`f('arg1', 'arg2')`, and then with the arguments `f('arg3', 'arg4')` would have
+`f('arg1', 'arg2')`, and then with the arguments `f('arg3', 'arg4')`, would have
 a `mock.calls` array that looks like this:
 
 ```js
 [['arg1', 'arg2'], ['arg3', 'arg4']];
+```
+
+### `mockFn.mock.returnValues`
+
+An array containing values that have been returned by all calls to this mock
+function. For any call to the mock that throws an error, a value of `undefined`
+will be stored in `mock.returnValues`.
+
+For example: A mock function `f` that has been called three times, returning
+`result1`, throwing an error, and then returning `result2`, would have a
+`mock.returnValues` array that looks like this:
+
+```js
+['result1', undefined, 'result2'];
+```
+
+### `mockFn.mock.thrownErrors`
+
+An array containing errors that have been thrown by all calls to this mock
+function.
+
+For example: A mock function `f` that has been called twice, throwing an
+`Error`, and then executing successfully without an error, would have the
+following `mock.thrownErrors` array:
+
+```js
+f.mock.thrownErrors.length === 2; // true
+f.mock.thrownErrors[0] instanceof Error; // true
+f.mock.thrownErrors[1] === undefined; // true
 ```
 
 ### `mockFn.mock.instances`
@@ -250,7 +279,7 @@ console.log(myMockFn(), myMockFn(), myMockFn(), myMockFn());
 Simple sugar function for:
 
 ```js
-jest.fn().mockReturnValue(Promise.resolve(value));
+jest.fn().mockImplementation(() => Promise.resolve(value));
 ```
 
 Useful to mock async functions in async tests:
@@ -270,7 +299,7 @@ test('async test', async () => {
 Simple sugar function for:
 
 ```js
-jest.fn().mockReturnValueOnce(Promise.resolve(value));
+jest.fn().mockImplementationOnce(() => Promise.resolve(value));
 ```
 
 Useful to resolve different values over multiple async calls:
@@ -297,7 +326,7 @@ test('async test', async () => {
 Simple sugar function for:
 
 ```js
-jest.fn().mockReturnValue(Promise.reject(value));
+jest.fn().mockImplementation(() => Promise.reject(value));
 ```
 
 Useful to create async mock functions that will always reject:
@@ -317,7 +346,7 @@ test('async test', async () => {
 Simple sugar function for:
 
 ```js
-jest.fn().mockReturnValueOnce(Promise.reject(value));
+jest.fn().mockImplementationOnce(() => Promise.reject(value));
 ```
 
 Example usage:
