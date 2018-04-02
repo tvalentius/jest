@@ -13,6 +13,7 @@ export interface SpawnOptions {
 }
 
 export interface Options {
+  coverage?: boolean;
   createProcess?(
     workspace: ProjectWorkspace,
     args: string[],
@@ -33,7 +34,7 @@ export class Runner extends EventEmitter {
 }
 
 export class Settings extends EventEmitter {
-  constructor(workspace: ProjectWorkspace);
+  constructor(workspace: ProjectWorkspace, options?: Options);
   getConfig(completed: Function): void;
   jestVersionMajor: number | null;
   settings: {
