@@ -153,9 +153,9 @@ export const options = {
   },
   collectCoverageFrom: {
     description:
-      'An array of glob patterns relative to <rootDir> matching the files ' +
-      'that coverage info needs to be collected from.',
-    type: 'array',
+      'A glob pattern relative to <rootDir> matching the files that coverage ' +
+      'info needs to be collected from.',
+    type: 'string',
   },
   collectCoverageOnlyFrom: {
     description: 'Explicit list of paths coverage will be restricted to.',
@@ -464,6 +464,11 @@ export const options = {
       'every single file.',
     type: 'boolean',
   },
+  runner: {
+    description:
+      "Allows to use a custom runner instead of Jest's default test runner.",
+    type: 'string',
+  },
   setupFiles: {
     description:
       'The paths to modules that run some code to configure or ' +
@@ -495,6 +500,12 @@ export const options = {
   testEnvironment: {
     description: 'Alias for --env',
     type: 'string',
+  },
+  testEnvironmentOptions: {
+    description:
+      'Test environment options that will be passed to the testEnvironment. ' +
+      'The relevant options depend on the environment.',
+    type: 'string', // Object
   },
   testFailureExitCode: {
     description: 'Exit code of `jest` command if the test run failed',

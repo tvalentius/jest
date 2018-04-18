@@ -18,30 +18,6 @@ const normalizeDots = text => text.replace(/\.{1,}$/gm, '.');
 
 SkipOnWindows.suite();
 
-const cleanupStackTrace = stderr => {
-  const STACK_REGEXP = /^.*at.*(setup-jest-globals|extractExpectedAssertionsErrors).*\n/gm;
-  if (!STACK_REGEXP.test(stderr)) {
-    throw new Error(
-      `
-      This function is used to remove inconsistent stack traces between
-      jest-jasmine2 and jest-circus. If you see this error, that means the
-      stack traces are no longer inconsistent and this function can be
-      safely removed.
-
-      output:
-      ${stderr}
-    `,
-    );
-  }
-
-  return (
-    stderr
-      .replace(STACK_REGEXP, '')
-      // Also remove trailing whitespace.
-      .replace(/\s+$/gm, '')
-  );
-};
-
 test('not throwing Error objects', () => {
   let stderr;
   stderr = runJest(dir, ['throw_number.test.js']).stderr;
@@ -51,7 +27,9 @@ test('not throwing Error objects', () => {
   stderr = runJest(dir, ['throw_object.test.js']).stderr;
   expect(extractSummary(stderr).rest).toMatchSnapshot();
   stderr = runJest(dir, ['assertion_count.test.js']).stderr;
-  expect(extractSummary(cleanupStackTrace(stderr)).rest).toMatchSnapshot();
+  expect(extractSummary(stderr).rest).toMatchSnapshot();
+  stderr = runJest(dir, ['during_tests.test.js']).stderr;
+  expect(extractSummary(stderr).rest).toMatchSnapshot();
 });
 
 test('works with node assert', () => {
@@ -76,6 +54,7 @@ test('works with node assert', () => {
       69 | 
       70 | test('assert.doesNotThrow', () => {
     > 71 |   assert.doesNotThrow(() => {
+         |          ^
       72 |     throw Error('err!');
       73 |   });
       74 | });
@@ -107,11 +86,26 @@ test('works with assertions in separate files', () => {
 test('works with async failures', () => {
   const {stderr} = runJest(dir, ['async_failures.test.js']);
 
-  expect(normalizeDots(extractSummary(stderr).rest)).toMatchSnapshot();
+  const rest = extractSummary(stderr)
+    .rest.split('\n')
+    .filter(line => line.indexOf('packages/expect/build/index.js') === -1)
+    .join('\n');
+
+  expect(normalizeDots(rest)).toMatchSnapshot();
 });
 
 test('works with snapshot failures', () => {
   const {stderr} = runJest(dir, ['snapshot.test.js']);
+
+  const result = normalizeDots(extractSummary(stderr).rest);
+
+  expect(
+    result.substring(0, result.indexOf('Snapshot Summary')),
+  ).toMatchSnapshot();
+});
+
+test('works with named snapshot failures', () => {
+  const {stderr} = runJest(dir, ['snapshot_named.test.js']);
 
   const result = normalizeDots(extractSummary(stderr).rest);
 
