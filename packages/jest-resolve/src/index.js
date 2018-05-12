@@ -365,7 +365,7 @@ Please check:
 "moduleNameMapper": {
   "${regex.toString()}": "${chalk.bold(mappedModuleName)}"
 },
-"resolver": ${chalk.bold(resolver)}`),
+"resolver": ${chalk.bold(String(resolver))}`),
             );
             error.stack = '';
             throw error;
@@ -373,22 +373,6 @@ Please check:
           return module;
         }
       }
-    }
-    if (resolver) {
-      // if moduleNameMapper didn't match anything, fallback to just the
-      // regular resolver
-      const module =
-        this.getModule(moduleName) ||
-        Resolver.findNodeModule(moduleName, {
-          basedir: dirname,
-          browser: this._options.browser,
-          extensions,
-          moduleDirectory,
-          paths,
-          resolver,
-          rootDir: this._options.rootDir,
-        });
-      return module;
     }
     return null;
   }

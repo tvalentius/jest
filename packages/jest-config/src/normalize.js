@@ -469,7 +469,12 @@ export default function normalize(options: InitialOptions, argv: Argv) {
         break;
       case 'projects':
         value = (options[key] || [])
-          .map(project => _replaceRootDirTags(options.rootDir, project))
+          .map(
+            project =>
+              typeof project === 'string'
+                ? _replaceRootDirTags(options.rootDir, project)
+                : project,
+          )
           .reduce((projects, project) => {
             // Project can be specified as globs. If a glob matches any files,
             // We expand it to these paths. If not, we keep the original path
@@ -489,6 +494,11 @@ export default function normalize(options: InitialOptions, argv: Argv) {
       case 'testRegex':
         value = options[key] && replacePathSepForRegex(options[key]);
         break;
+      case 'filter':
+        value =
+          options[key] &&
+          resolve(newOptions.resolver, options.rootDir, key, options[key]);
+        break;
       case 'automock':
       case 'bail':
       case 'browser':
@@ -500,6 +510,7 @@ export default function normalize(options: InitialOptions, argv: Argv) {
       case 'coverageReporters':
       case 'coverageThreshold':
       case 'detectLeaks':
+      case 'detectOpenHandles':
       case 'displayName':
       case 'expand':
       case 'globals':
@@ -526,6 +537,7 @@ export default function normalize(options: InitialOptions, argv: Argv) {
       case 'rootDir':
       case 'runTestsByPath':
       case 'silent':
+      case 'skipFilter':
       case 'skipNodeResolution':
       case 'testEnvironment':
       case 'testEnvironmentOptions':

@@ -18,6 +18,9 @@ import {
 
 const elementSymbol = Symbol.for('react.element');
 const fragmentSymbol = Symbol.for('react.fragment');
+const forwardRefSymbol = Symbol.for('react.forward_ref');
+const providerSymbol = Symbol.for('react.provider');
+const contextSymbol = Symbol.for('react.context');
 
 // Given element.props.children, or subtree during recursive traversal,
 // return flattened array of children.
@@ -33,14 +36,32 @@ const getChildren = (arg, children = []) => {
 };
 
 const getType = element => {
-  if (typeof element.type === 'string') {
-    return element.type;
+  const type = element.type;
+  if (typeof type === 'string') {
+    return type;
   }
-  if (typeof element.type === 'function') {
-    return element.type.displayName || element.type.name || 'Unknown';
+  if (typeof type === 'function') {
+    return type.displayName || type.name || 'Unknown';
   }
-  if (element.type === fragmentSymbol) {
+  if (type === fragmentSymbol) {
     return 'React.Fragment';
+  }
+  if (typeof type === 'object' && type !== null) {
+    if (type.$$typeof === providerSymbol) {
+      return 'Context.Provider';
+    }
+
+    if (type.$$typeof === contextSymbol) {
+      return 'Context.Consumer';
+    }
+
+    if (type.$$typeof === forwardRefSymbol) {
+      const functionName = type.render.displayName || type.render.name || '';
+
+      return functionName !== ''
+        ? 'ForwardRef(' + functionName + ')'
+        : 'ForwardRef';
+    }
   }
   return 'UNDEFINED';
 };
