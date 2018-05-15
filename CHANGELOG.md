@@ -150,9 +150,14 @@
   configuration ([#5976](https://github.com/facebook/jest/pull/5976))
 * `[website]` Fix website docs
   ([#5853](https://github.com/facebook/jest/pull/5853))
+* `[pretty-format]` [**BREAKING**] Remove undefined props from React elements
+  ([#6162](https://github.com/facebook/jest/pull/6162))
 
 ### Chore & Maintenance
 
+* `[jest-jasmine2]` Simplify `Env.execute` and TreeProcessor to setup and clean
+  resources for the top suite the same way as for all of the children suites
+  ([#5885](https://github.com/facebook/jest/pull/5885))
 * `[babel-jest]` [**BREAKING**] Always return object from transformer
   ([#5991](https://github.com/facebook/jest/pull/5991))
 * `[*]` Run Prettier on compiled output
