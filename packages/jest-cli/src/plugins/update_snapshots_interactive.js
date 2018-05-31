@@ -6,10 +6,10 @@
  *
  * @flow
  */
-import type {JestHookSubscriber} from '../jest_hooks';
+import type {JestHookSubscriber} from 'types/JestHooks';
 import type {GlobalConfig} from 'types/Config';
 import type {AggregatedResult, AssertionLocation} from 'types/TestResult';
-import BaseWatchPlugin from '../base_watch_plugin';
+import {BaseWatchPlugin} from 'jest-watcher';
 import SnapshotInteractiveMode from '../snapshot_interactive_mode';
 
 class UpdateSnapshotInteractivePlugin extends BaseWatchPlugin {
@@ -53,7 +53,7 @@ class UpdateSnapshotInteractivePlugin extends BaseWatchPlugin {
   }
 
   apply(hooks: JestHookSubscriber) {
-    hooks.testRunComplete(results => {
+    hooks.onTestRunComplete(results => {
       this._failedSnapshotTestAssertions = this.getFailedSnapshotTestAssertions(
         results,
       );
@@ -99,7 +99,7 @@ class UpdateSnapshotInteractivePlugin extends BaseWatchPlugin {
       this._failedSnapshotTestAssertions.length > 0
     ) {
       return {
-        key: 'i'.codePointAt(0),
+        key: 'i',
         prompt: 'update failing snapshots interactively',
       };
     }

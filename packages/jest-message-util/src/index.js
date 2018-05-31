@@ -64,6 +64,12 @@ const STACK_PATH_REGEXP = /\s*at.*\(?(\:\d*\:\d*|native)\)?/;
 const EXEC_ERROR_MESSAGE = 'Test suite failed to run';
 const ERROR_TEXT = 'Error: ';
 
+const indentAllLines = (lines: string, indent: string) =>
+  lines
+    .split('\n')
+    .map(line => (line ? indent + line : line))
+    .join('\n');
+
 const trim = string => (string || '').trim();
 
 // Some errors contain not only line numbers in stack traces
@@ -84,10 +90,7 @@ const getRenderedCallsite = (
     {highlightCode: true},
   );
 
-  renderedCallsite = renderedCallsite
-    .split('\n')
-    .map(line => MESSAGE_INDENT + line)
-    .join('\n');
+  renderedCallsite = indentAllLines(renderedCallsite, MESSAGE_INDENT);
 
   renderedCallsite = `\n${renderedCallsite}\n`;
   return renderedCallsite;
@@ -127,10 +130,8 @@ export const formatExecError = (
     message = separated.message;
   }
 
-  message = message
-    .split(/\n/)
-    .map(line => MESSAGE_INDENT + line)
-    .join('\n');
+  message = indentAllLines(message, MESSAGE_INDENT);
+
   stack =
     stack && !options.noStackTrace
       ? '\n' + formatStackTrace(stack, config, options, testPath)
@@ -200,12 +201,7 @@ const removeInternalStackEntries = (lines, options: StackTraceOptions) => {
   });
 };
 
-const formatPaths = (
-  config: StackTraceConfig,
-  options: StackTraceOptions,
-  relativeTestPath,
-  line,
-) => {
+const formatPaths = (config: StackTraceConfig, relativeTestPath, line) => {
   // Extract the file path from the trace line.
   const match = line.match(/(^\s*at .*?\(?)([^()]+)(:[0-9]+:[0-9]+\)?.*$)/);
   if (!match) {
@@ -277,14 +273,14 @@ export const formatStackTrace = (
   }
 
   const stacktrace = lines
+    .filter(Boolean)
     .map(
       line =>
-        STACK_INDENT +
-        formatPaths(config, options, relativeTestPath, trimPaths(line)),
+        STACK_INDENT + formatPaths(config, relativeTestPath, trimPaths(line)),
     )
     .join('\n');
 
-  return renderedCallsite + stacktrace;
+  return `${renderedCallsite}\n${stacktrace}`;
 };
 
 export const formatResultsErrors = (
@@ -311,10 +307,7 @@ export const formatResultsErrors = (
             formatStackTrace(stack, config, options, testPath),
           ) + '\n';
 
-      message = message
-        .split(/\n/)
-        .map(line => MESSAGE_INDENT + line)
-        .join('\n');
+      message = indentAllLines(message, MESSAGE_INDENT);
 
       const title =
         chalk.bold.red(

@@ -15,8 +15,8 @@ import type {TestResult} from 'types/TestResult';
 import type Runtime from 'jest-runtime';
 
 import path from 'path';
-import fs from 'graceful-fs';
 import installEach from './each';
+import {installErrorOnPrivate} from './error_on_private';
 import {getCallsite} from 'jest-util';
 import JasmineReporter from './reporter';
 import {install as jasmineAsyncInstall} from './jasmine_async';
@@ -30,12 +30,7 @@ async function jasmine2(
   runtime: Runtime,
   testPath: string,
 ): Promise<TestResult> {
-  const reporter = new JasmineReporter(
-    globalConfig,
-    config,
-    environment,
-    testPath,
-  );
+  const reporter = new JasmineReporter(globalConfig, config, testPath);
   const jasmineFactory = runtime.requireInternalModule(JASMINE);
   const jasmine = jasmineFactory.create({
     process,
@@ -106,6 +101,10 @@ async function jasmine2(
       expand: globalConfig.expand,
     });
 
+  if (globalConfig.errorOnDeprecated) {
+    installErrorOnPrivate(environment.global);
+  }
+
   const snapshotState: SnapshotState = runtime
     .requireInternalModule(path.resolve(__dirname, './setup_jest_globals.js'))
     .default({
@@ -118,30 +117,6 @@ async function jasmine2(
   if (config.setupTestFrameworkScriptFile) {
     runtime.requireModule(config.setupTestFrameworkScriptFile);
   }
-
-  runtime
-    .requireInternalModule(
-      require.resolve('source-map-support'),
-      'source-map-support',
-    )
-    .install({
-      environment: 'node',
-      handleUncaughtExceptions: false,
-      retrieveSourceMap: source => {
-        const sourceMaps = runtime.getSourceMaps();
-        const sourceMapSource = sourceMaps && sourceMaps[source];
-
-        if (sourceMapSource) {
-          try {
-            return {
-              map: JSON.parse(fs.readFileSync(sourceMapSource)),
-              url: source,
-            };
-          } catch (e) {}
-        }
-        return null;
-      },
-    });
 
   if (globalConfig.enabledTestsMap) {
     env.specFilter = spec => {
@@ -157,9 +132,10 @@ async function jasmine2(
 
   runtime.requireModule(testPath);
   await env.execute();
-  return reporter
-    .getResults()
-    .then(results => addSnapshotData(results, snapshotState));
+
+  const results = await reporter.getResults();
+
+  return addSnapshotData(results, snapshotState);
 }
 
 const addSnapshotData = (results, snapshotState) => {

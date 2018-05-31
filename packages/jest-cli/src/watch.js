@@ -26,8 +26,8 @@ import updateGlobalConfig from './lib/update_global_config';
 import SearchSource from './search_source';
 import TestWatcher from './test_watcher';
 import FailedTestsCache from './failed_tests_cache';
-import {KEYS, CLEAR} from './constants';
-import JestHooks from './jest_hooks';
+import {CLEAR} from './constants';
+import {KEYS, JestHook} from 'jest-watcher';
 import TestPathPatternPlugin from './plugins/test_path_pattern';
 import TestNamePatternPlugin from './plugins/test_name_pattern';
 import UpdateSnapshotsPlugin from './plugins/update_snapshots';
@@ -55,7 +55,7 @@ export default function watch(
   outputStream: stream$Writable | tty$WriteStream,
   hasteMapInstances: Array<HasteMap>,
   stdin?: stream$Readable | tty$ReadStream = process.stdin,
-  hooks?: JestHooks = new JestHooks(),
+  hooks?: JestHook = new JestHook(),
 ): Promise<void> {
   // `globalConfig` will be constantly updated and reassigned as a result of
   // watch mode interactions.
@@ -141,12 +141,12 @@ export default function watch(
   let isWatchUsageDisplayed = false;
 
   const emitFileChange = () => {
-    if (hooks.isUsed('fileChange')) {
+    if (hooks.isUsed('onFileChange')) {
       const projects = searchSources.map(({context, searchSource}) => ({
         config: context.config,
         testPaths: searchSource.findMatchingTests('').tests.map(t => t.path),
       }));
-      hooks.getEmitter().fileChange({projects});
+      hooks.getEmitter().onFileChange({projects});
     }
   };
 
@@ -209,7 +209,7 @@ export default function watch(
       jestHooks: hooks.getEmitter(),
       onComplete: results => {
         isRunning = false;
-        hooks.getEmitter().testRunComplete(results);
+        hooks.getEmitter().onTestRunComplete(results);
 
         // Create a new testWatcher instance so that re-runs won't be blocked.
         // The old instance that was passed to Jest will still be interrupted
@@ -263,9 +263,7 @@ export default function watch(
     if (
       isRunning &&
       testWatcher &&
-      [KEYS.Q, KEYS.ENTER, KEYS.A, KEYS.O, KEYS.F]
-        .concat(pluginKeys)
-        .indexOf(key) !== -1
+      !['q', KEYS.ENTER, 'a', 'o', 'f'].concat(pluginKeys).includes(key)
     ) {
       testWatcher.setState({interrupted: true});
       return;
@@ -277,7 +275,7 @@ export default function watch(
     ).find(plugin => {
       const usageData =
         (plugin.getUsageInfo && plugin.getUsageInfo(globalConfig)) || {};
-      return usageData.key === parseInt(key, 16);
+      return usageData.key === key;
     });
 
     if (matchingWatchPlugin != null) {
@@ -306,7 +304,7 @@ export default function watch(
       case KEYS.ENTER:
         startRun(globalConfig);
         break;
-      case KEYS.A:
+      case 'a':
         globalConfig = updateGlobalConfig(globalConfig, {
           mode: 'watchAll',
           testNamePattern: '',
@@ -314,20 +312,20 @@ export default function watch(
         });
         startRun(globalConfig);
         break;
-      case KEYS.C:
+      case 'c':
         updateConfigAndRun({
           mode: 'watch',
           testNamePattern: '',
           testPathPattern: '',
         });
         break;
-      case KEYS.F:
+      case 'f':
         globalConfig = updateGlobalConfig(globalConfig, {
           onlyFailures: !globalConfig.onlyFailures,
         });
         startRun(globalConfig);
         break;
-      case KEYS.O:
+      case 'o':
         globalConfig = updateGlobalConfig(globalConfig, {
           mode: 'watch',
           testNamePattern: '',
@@ -335,9 +333,9 @@ export default function watch(
         });
         startRun(globalConfig);
         break;
-      case KEYS.QUESTION_MARK:
+      case '?':
         break;
-      case KEYS.W:
+      case 'w':
         if (!shouldDisplayWatchUsage && !isWatchUsageDisplayed) {
           outputStream.write(ansiEscapes.cursorUp());
           outputStream.write(ansiEscapes.eraseDown);
@@ -359,7 +357,7 @@ export default function watch(
   if (typeof stdin.setRawMode === 'function') {
     stdin.setRawMode(true);
     stdin.resume();
-    stdin.setEncoding('hex');
+    stdin.setEncoding('utf8');
     stdin.on('data', onKeypress);
   }
 
@@ -405,7 +403,7 @@ const usage = (
       plugin =>
         chalk.dim(' \u203A Press') +
         ' ' +
-        String.fromCodePoint(plugin.key) +
+        plugin.key +
         ' ' +
         chalk.dim(`to ${plugin.prompt}.`),
     ),
