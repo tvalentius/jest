@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,16 +17,13 @@ import type {
 
 import {getState, dispatch} from './state';
 import {
-  callAsyncFn,
+  callAsyncCircusFn,
   getAllHooksForDescribe,
   getEachHooksForTest,
   getTestID,
   invariant,
   makeRunResult,
-  getOriginalPromise,
 } from './utils';
-
-const Promise = getOriginalPromise();
 
 const run = async (): Promise<RunResult> => {
   const {rootDescribeBlock} = getState();
@@ -44,10 +41,32 @@ const _runTestsForDescribeBlock = async (describeBlock: DescribeBlock) => {
   const {beforeAll, afterAll} = getAllHooksForDescribe(describeBlock);
 
   for (const hook of beforeAll) {
-    await _callHook({describeBlock, hook});
+    await _callCircusHook({describeBlock, hook});
   }
+
+  // Tests that fail and are retried we run after other tests
+  const retryTimes = parseInt(global[Symbol.for('RETRY_TIMES')], 10) || 0;
+  const deferredRetryTests = [];
+
   for (const test of describeBlock.tests) {
     await _runTest(test);
+
+    if (retryTimes > 0 && test.errors.length > 0) {
+      deferredRetryTests.push(test);
+    }
+  }
+
+  // Re-run failed tests n-times if configured
+  for (const test of deferredRetryTests) {
+    let numRetriesAvailable = retryTimes;
+
+    while (numRetriesAvailable > 0 && test.errors.length > 0) {
+      // Clear errors so retries occur
+      dispatch({name: 'test_retry', test});
+
+      await _runTest(test);
+      numRetriesAvailable--;
+    }
   }
 
   for (const child of describeBlock.children) {
@@ -55,7 +74,7 @@ const _runTestsForDescribeBlock = async (describeBlock: DescribeBlock) => {
   }
 
   for (const hook of afterAll) {
-    await _callHook({describeBlock, hook});
+    await _callCircusHook({describeBlock, hook});
   }
   dispatch({describeBlock, name: 'run_describe_finish'});
 };
@@ -75,6 +94,11 @@ const _runTest = async (test: TestEntry): Promise<void> => {
     return;
   }
 
+  if (test.mode === 'todo') {
+    dispatch({name: 'test_todo', test});
+    return;
+  }
+
   const {afterEach, beforeEach} = getEachHooksForTest(test);
 
   for (const hook of beforeEach) {
@@ -83,22 +107,22 @@ const _runTest = async (test: TestEntry): Promise<void> => {
       // hooks after that.
       break;
     }
-    await _callHook({hook, test, testContext});
+    await _callCircusHook({hook, test, testContext});
   }
 
-  await _callTest(test, testContext);
+  await _callCircusTest(test, testContext);
 
   for (const hook of afterEach) {
-    await _callHook({hook, test, testContext});
+    await _callCircusHook({hook, test, testContext});
   }
 
   // `afterAll` hooks should not affect test status (pass or fail), because if
   // we had a global `afterAll` hook it would block all existing tests until
-  // this hook is executed. So we dispatche `test_done` right away.
+  // this hook is executed. So we dispatch `test_done` right away.
   dispatch({name: 'test_done', test});
 };
 
-const _callHook = ({
+const _callCircusHook = ({
   hook,
   test,
   describeBlock,
@@ -111,14 +135,14 @@ const _callHook = ({
 }): Promise<mixed> => {
   dispatch({hook, name: 'hook_start'});
   const timeout = hook.timeout || getState().testTimeout;
-  return callAsyncFn(hook.fn, testContext, {isHook: true, timeout})
+  return callAsyncCircusFn(hook.fn, testContext, {isHook: true, timeout})
     .then(() => dispatch({describeBlock, hook, name: 'hook_success', test}))
     .catch(error =>
       dispatch({describeBlock, error, hook, name: 'hook_failure', test}),
     );
 };
 
-const _callTest = async (
+const _callCircusTest = (
   test: TestEntry,
   testContext: TestContext,
 ): Promise<void> => {
@@ -128,10 +152,10 @@ const _callTest = async (
 
   if (test.errors.length) {
     // We don't run the test if there's already an error in before hooks.
-    return;
+    return Promise.resolve();
   }
 
-  await callAsyncFn(test.fn, testContext, {isHook: false, timeout})
+  return callAsyncCircusFn(test.fn, testContext, {isHook: false, timeout})
     .then(() => dispatch({name: 'test_fn_success', test}))
     .catch(error => dispatch({error, name: 'test_fn_failure', test}));
 };

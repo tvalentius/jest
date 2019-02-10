@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -76,7 +76,7 @@ const IDVisitor = {
   ReferencedIdentifier(path) {
     this.ids.add(path);
   },
-  blacklist: ['TypeAnnotation'],
+  blacklist: ['TypeAnnotation', 'TSTypeAnnotation', 'TSTypeReference'],
 };
 
 const FUNCTIONS: Object = Object.create(null);
@@ -110,7 +110,7 @@ FUNCTIONS.mock = args => {
       if (!found) {
         invariant(
           (scope.hasGlobal(name) && WHITELISTED_IDENTIFIERS[name]) ||
-            /^mock/.test(name) ||
+            /^mock/i.test(name) ||
             // Allow istanbul's coverage variable to pass.
             /^(?:__)?cov/.test(name),
           'The module factory of `jest.mock()` is not allowed to ' +
@@ -123,7 +123,7 @@ FUNCTIONS.mock = args => {
             '.\n' +
             'Note: This is a precaution to guard against uninitialized mock ' +
             'variables. If it is ensured that the mock is required lazily, ' +
-            'variable names prefixed with `mock` are permitted.',
+            'variable names prefixed with `mock` (case insensitive) are permitted.',
         );
       }
     }
@@ -140,9 +140,6 @@ FUNCTIONS.disableAutomock = FUNCTIONS.enableAutomock = args =>
   args.length === 0;
 
 module.exports = () => {
-  const isJest = callee =>
-    callee.get('object').isIdentifier(JEST_GLOBAL) ||
-    (callee.isMemberExpression() && isJest(callee.get('object')));
   const shouldHoistExpression = expr => {
     if (!expr.isCallExpression()) {
       return false;

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -18,6 +18,7 @@ const versions = require(CWD + '/versions.json');
 class Versions extends React.Component {
   render() {
     const latestVersion = versions[0];
+    const {language} = this.props;
     return (
       <div className="docMainWrapper wrapper">
         <Container className="mainContainer versionsContainer">
@@ -33,7 +34,9 @@ class Versions extends React.Component {
                   <th>{latestVersion}</th>
                   <td>
                     <a
-                      href={`${siteConfig.baseUrl}docs/en/getting-started.html`}
+                      href={`${
+                        siteConfig.baseUrl
+                      }docs/${language}/getting-started.html`}
                     >
                       Documentation
                     </a>
@@ -58,7 +61,7 @@ class Versions extends React.Component {
                     <a
                       href={`${
                         siteConfig.baseUrl
-                      }docs/en/next/getting-started.html`}
+                      }docs/${language}/next/getting-started.html`}
                     >
                       Documentation
                     </a>
@@ -79,12 +82,12 @@ class Versions extends React.Component {
                   version =>
                     version !== latestVersion && (
                       <tr key={version}>
-                        <th>{version === '22.0' ? '<=22' : version}</th>
+                        <th>{version}</th>
                         <td>
                           <a
                             href={`${
                               siteConfig.baseUrl
-                            }docs/en/${version}/getting-started.html`}
+                            }docs/${language}/${version}/getting-started.html`}
                           >
                             Documentation
                           </a>

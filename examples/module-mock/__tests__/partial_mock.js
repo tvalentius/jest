@@ -8,14 +8,16 @@
 import defaultExport, {apple, strawberry} from '../fruit';
 
 jest.mock('../fruit', () => {
-  const originalModule = require.requireActual('../fruit');
+  const originalModule = jest.requireActual('../fruit');
   const mockedModule = jest.genMockFromModule('../fruit');
 
   //Mock the default export and named export 'apple'.
-  return Object.assign({}, mockedModule, originalModule, {
+  return {
+    ...mockedModule,
+    ...originalModule,
     apple: 'mocked apple',
     default: jest.fn(() => 'mocked fruit'),
-  });
+  };
 });
 
 it('does a partial mock', () => {

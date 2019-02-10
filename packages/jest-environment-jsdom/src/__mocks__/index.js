@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 'use strict';
 
-const vm = require.requireActual('vm');
+const vm = jest.requireActual('vm');
 
 const JSDOMEnvironment = jest.genMockFromModule('../index');
 
@@ -14,10 +14,9 @@ JSDOMEnvironment.mockImplementation(function(config) {
   this.global = {
     JSON,
     console: {},
-    mockClearTimers: jest.fn(),
   };
 
-  const globalValues = Object.assign({}, config.globals);
+  const globalValues = {...config.globals};
   for (const customGlobalKey in globalValues) {
     this.global[customGlobalKey] = globalValues[customGlobalKey];
   }

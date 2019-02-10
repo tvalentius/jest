@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,7 +12,7 @@
 import type {GlobalConfig, ProjectConfig} from 'types/Config';
 
 const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
-  bail: false,
+  bail: 0,
   changedFilesWithAncestor: false,
   changedSince: '',
   collectCoverage: false,
@@ -26,6 +26,7 @@ const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   enabledTestsMap: null,
   errorOnDeprecated: false,
   expand: false,
+  extraGlobals: [],
   filter: null,
   findRelatedTests: false,
   forceExit: false,
@@ -35,12 +36,13 @@ const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   lastCommit: false,
   listTests: false,
   logHeapUsage: false,
+  maxConcurrency: 5,
   maxWorkers: 2,
   noSCM: null,
   noStackTrace: false,
   nonFlagArgs: [],
   notify: false,
-  notifyMode: 'always',
+  notifyMode: 'failure-change',
   onlyChanged: false,
   onlyFailures: false,
   outputFile: null,
@@ -77,8 +79,11 @@ const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   detectOpenHandles: false,
   displayName: undefined,
   errorOnDeprecated: false,
+  extraGlobals: [],
   filter: null,
   forceCoverageMatch: [],
+  globalSetup: null,
+  globalTeardown: null,
   globals: {},
   haste: {
     providesModuleNodeModules: [],
@@ -90,6 +95,7 @@ const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   modulePathIgnorePatterns: [],
   modulePaths: [],
   name: 'test_name',
+  prettierPath: 'prettier',
   resetMocks: false,
   resetModules: false,
   resolver: null,
@@ -98,16 +104,17 @@ const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   roots: [],
   runner: 'jest-runner',
   setupFiles: [],
-  setupTestFrameworkScriptFile: null,
+  setupFilesAfterEnv: [],
   skipFilter: false,
   skipNodeResolution: false,
+  snapshotResolver: null,
   snapshotSerializers: [],
   testEnvironment: 'node',
   testEnvironmentOptions: {},
   testLocationInResults: false,
   testMatch: [],
   testPathIgnorePatterns: [],
-  testRegex: '.test.js$',
+  testRegex: ['\\.test\\.js$'],
   testRunner: 'jest-jasmine2',
   testURL: '',
   timers: 'real',
@@ -117,7 +124,7 @@ const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   watchPathIgnorePatterns: [],
 };
 
-const makeGlobalConfig = (overrides: Object = {}): GlobalConfig => {
+export const makeGlobalConfig = (overrides: Object = {}): GlobalConfig => {
   const overridesKeys = new Set(Object.keys(overrides));
   Object.keys(DEFAULT_GLOBAL_CONFIG).forEach(key => overridesKeys.delete(key));
 
@@ -128,10 +135,10 @@ const makeGlobalConfig = (overrides: Object = {}): GlobalConfig => {
     `);
   }
 
-  return Object.assign({}, DEFAULT_GLOBAL_CONFIG, overrides);
+  return {...DEFAULT_GLOBAL_CONFIG, ...overrides};
 };
 
-const makeProjectConfig = (overrides: Object = {}): ProjectConfig => {
+export const makeProjectConfig = (overrides: Object = {}): ProjectConfig => {
   const overridesKeys = new Set(Object.keys(overrides));
   Object.keys(DEFAULT_PROJECT_CONFIG).forEach(key => overridesKeys.delete(key));
 
@@ -142,10 +149,5 @@ const makeProjectConfig = (overrides: Object = {}): ProjectConfig => {
     `);
   }
 
-  return Object.assign({}, DEFAULT_PROJECT_CONFIG, overrides);
-};
-
-module.exports = {
-  makeGlobalConfig,
-  makeProjectConfig,
+  return {...DEFAULT_GLOBAL_CONFIG, ...overrides};
 };

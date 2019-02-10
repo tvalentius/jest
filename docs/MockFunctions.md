@@ -22,7 +22,7 @@ function forEach(items, callback) {
 To test this function, we can use a mock function, and inspect the mock's state to ensure the callback is invoked as expected.
 
 ```javascript
-const mockCallback = jest.fn();
+const mockCallback = jest.fn(x => 42 + x);
 forEach([0, 1], mockCallback);
 
 // The mock function is called twice
@@ -35,7 +35,7 @@ expect(mockCallback.mock.calls[0][0]).toBe(0);
 expect(mockCallback.mock.calls[1][0]).toBe(1);
 
 // The return value of the first call to the function was 42
-expect(mockCallback.mock.returnValues[0]).toBe(42);
+expect(mockCallback.mock.results[0].value).toBe(42);
 ```
 
 ## `.mock` property
@@ -67,7 +67,7 @@ expect(someMockFunction.mock.calls[0][0]).toBe('first arg');
 expect(someMockFunction.mock.calls[0][1]).toBe('second arg');
 
 // The return value of the first call to the function was 'return value'
-expect(someMockFunction.mock.returnValues[0]).toBe('return value');
+expect(someMockFunction.mock.results[0].value).toBe('return value');
 
 // This function was instantiated exactly twice
 expect(someMockFunction.mock.instances.length).toBe(2);
@@ -95,7 +95,7 @@ console.log(myMock(), myMock(), myMock(), myMock());
 // > 10, 'x', true, true
 ```
 
-Mock functions are also very effective in code that uses a functional continuation-passing style. Code written in this style helps avoid the need for complicated stubs that recreate behavior of the real component they're standing in for, in favor of injecting values directly into the test right before they're used.
+Mock functions are also very effective in code that uses a functional continuation-passing style. Code written in this style helps avoid the need for complicated stubs that recreate the behavior of the real component they're standing in for, in favor of injecting values directly into the test right before they're used.
 
 ```javascript
 const filterTestFn = jest.fn();
@@ -133,7 +133,7 @@ export default Users;
 
 Now, in order to test this method without actually hitting the API (and thus creating slow and fragile tests), we can use the `jest.mock(...)` function to automatically mock the axios module.
 
-Once we mock the module we can provide a `mockReturnValue` for `.get` that returns the data we want our test to assert against. In effect, we are saying that we want axios.get('/users.json') to return a fake response.
+Once we mock the module we can provide a `mockResolvedValue` for `.get` that returns the data we want our test to assert against. In effect, we are saying that we want axios.get('/users.json') to return a fake response.
 
 ```js
 // users.test.js
@@ -143,13 +143,14 @@ import Users from './users';
 jest.mock('axios');
 
 test('should fetch users', () => {
-  const resp = {data: [{name: 'Bob'}]};
+  const users = [{name: 'Bob'}];
+  const resp = {data: users};
   axios.get.mockResolvedValue(resp);
 
   // or you could use the following depending on your use case:
   // axios.get.mockImplementation(() => Promise.resolve(resp))
 
-  return Users.all().then(users => expect(users).toEqual(resp.data));
+  return Users.all().then(resp => expect(resp.data).toEqual(users));
 });
 ```
 
@@ -159,9 +160,6 @@ Still, there are cases where it's useful to go beyond the ability to specify ret
 
 ```javascript
 const myMockFn = jest.fn(cb => cb(null, true));
-
-myMockFn((err, val) => console.log(val));
-// > true
 
 myMockFn((err, val) => console.log(val));
 // > true
@@ -280,7 +278,7 @@ expect(mockFunc.mock.calls[mockFunc.mock.calls.length - 1][0]).toBe(42);
 // A snapshot will check that a mock was invoked the same number of times,
 // in the same order, with the same arguments. It will also assert on the name.
 expect(mockFunc.mock.calls).toEqual([[arg1, arg2]]);
-expect(mockFunc.mock.getMockName()).toBe('a mock name');
+expect(mockFunc.getMockName()).toBe('a mock name');
 ```
 
 For a complete list of matchers, check out the [reference docs](ExpectAPI.md).

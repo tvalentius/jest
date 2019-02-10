@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -27,7 +27,9 @@ it('throw matcher can take func', () => {
     throw new Error('coconut');
   });
 
-  expect(matchFn).toHaveBeenCalledWith('', 'coconut');
+  expect(matchFn).toHaveBeenCalledWith(
+    expect.objectContaining({received: 'coconut', testName: ''}),
+  );
 });
 
 describe('throw matcher from promise', () => {
@@ -42,7 +44,9 @@ describe('throw matcher from promise', () => {
   it('can take error', () => {
     throwMatcher(new Error('coconut'), 'testName', true);
 
-    expect(matchFn).toHaveBeenCalledWith('', 'coconut');
+    expect(matchFn).toHaveBeenCalledWith(
+      expect.objectContaining({received: 'coconut', testName: ''}),
+    );
   });
 
   it('can take custom error', () => {
@@ -50,6 +54,8 @@ describe('throw matcher from promise', () => {
 
     throwMatcher(new CustomError('coconut'), 'testName', true);
 
-    expect(matchFn).toHaveBeenCalledWith('', 'coconut');
+    expect(matchFn).toHaveBeenCalledWith(
+      expect.objectContaining({received: 'coconut', testName: ''}),
+    );
   });
 });

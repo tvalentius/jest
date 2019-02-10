@@ -1,22 +1,22 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  */
 
+import crypto from 'crypto';
+import path from 'path';
 import {escapeStrForRegex} from 'jest-regex-util';
 import normalize from '../normalize';
+import Defaults from '../Defaults';
 
-jest.mock('jest-resolve');
+import {DEFAULT_JS_PATTERN} from '../constants';
 
-jest.mock('path', () => require.requireActual('path').posix);
-
-const crypto = require('crypto');
-const path = require('path');
-const DEFAULT_JS_PATTERN = require('../constants').DEFAULT_JS_PATTERN;
 const DEFAULT_CSS_PATTERN = '^.+\\.(css)$';
+
+jest.mock('jest-resolve').mock('path', () => jest.requireActual('path').posix);
 
 let root;
 let expectedPathFooBar;
@@ -46,6 +46,12 @@ beforeEach(() => {
   expectedPathAbsAnother = path.join(root, 'another', 'abs', 'path');
 
   require('jest-resolve').findNodeModule = findNodeModule;
+
+  jest.spyOn(console, 'warn');
+});
+
+afterEach(() => {
+  console.warn.mockRestore();
 });
 
 it('picks a name based on the rootDir', () => {
@@ -53,6 +59,7 @@ it('picks a name based on the rootDir', () => {
   const expected = crypto
     .createHash('md5')
     .update('/root/path/foo')
+    .update(String(Infinity))
     .digest('hex');
   expect(
     normalize(
@@ -62,6 +69,19 @@ it('picks a name based on the rootDir', () => {
       {},
     ).options.name,
   ).toBe(expected);
+});
+
+it('keeps custom project name based on the projects rootDir', () => {
+  const name = 'test';
+  const options = normalize(
+    {
+      projects: [{name, rootDir: '/path/to/foo'}],
+      rootDir: '/root/path/baz',
+    },
+    {},
+  );
+
+  expect(options.options.projects[0].name).toBe(name);
 });
 
 it('keeps custom names based on the rootDir', () => {
@@ -74,6 +94,16 @@ it('keeps custom names based on the rootDir', () => {
       {},
     ).options.name,
   ).toBe('custom-name');
+});
+
+it('minimal config is stable across runs', () => {
+  const firstNormalization = normalize({rootDir: '/root/path/foo'}, {});
+  const secondNormalization = normalize({rootDir: '/root/path/foo'}, {});
+
+  expect(firstNormalization).toEqual(secondNormalization);
+  expect(JSON.stringify(firstNormalization)).toBe(
+    JSON.stringify(secondNormalization),
+  );
 });
 
 it('sets coverageReporters correctly when argv.json is set', () => {
@@ -99,8 +129,7 @@ describe('rootDir', () => {
 
 describe('automock', () => {
   it('falsy automock is not overwritten', () => {
-    const consoleWarn = console.warn;
-    console.warn = jest.fn();
+    console.warn.mockImplementation(() => {});
     const {options} = normalize(
       {
         automock: false,
@@ -110,8 +139,6 @@ describe('automock', () => {
     );
 
     expect(options.automock).toBe(false);
-
-    console.warn = consoleWarn;
   });
 });
 
@@ -330,13 +357,12 @@ describe('haste', () => {
   });
 });
 
-describe('setupTestFrameworkScriptFile', () => {
+describe('setupFilesAfterEnv', () => {
   let Resolver;
   beforeEach(() => {
     Resolver = require('jest-resolve');
-    Resolver.findNodeModule = jest.fn(
-      name =>
-        name.startsWith('/') ? name : '/root/path/foo' + path.sep + name,
+    Resolver.findNodeModule = jest.fn(name =>
+      name.startsWith('/') ? name : '/root/path/foo' + path.sep + name,
     );
   });
 
@@ -344,36 +370,73 @@ describe('setupTestFrameworkScriptFile', () => {
     const {options} = normalize(
       {
         rootDir: '/root/path/foo',
-        setupTestFrameworkScriptFile: 'bar/baz',
+        setupFilesAfterEnv: ['bar/baz'],
       },
       {},
     );
 
-    expect(options.setupTestFrameworkScriptFile).toEqual(expectedPathFooBar);
+    expect(options.setupFilesAfterEnv).toEqual([expectedPathFooBar]);
   });
 
   it('does not change absolute paths', () => {
     const {options} = normalize(
       {
         rootDir: '/root/path/foo',
-        setupTestFrameworkScriptFile: '/an/abs/path',
+        setupFilesAfterEnv: ['/an/abs/path'],
       },
       {},
     );
 
-    expect(options.setupTestFrameworkScriptFile).toEqual(expectedPathAbs);
+    expect(options.setupFilesAfterEnv).toEqual([expectedPathAbs]);
   });
 
   it('substitutes <rootDir> tokens', () => {
     const {options} = normalize(
       {
         rootDir: '/root/path/foo',
-        setupTestFrameworkScriptFile: '<rootDir>/bar/baz',
+        setupFilesAfterEnv: ['<rootDir>/bar/baz'],
       },
       {},
     );
 
-    expect(options.setupTestFrameworkScriptFile).toEqual(expectedPathFooBar);
+    expect(options.setupFilesAfterEnv).toEqual([expectedPathFooBar]);
+  });
+});
+
+describe('setupTestFrameworkScriptFile', () => {
+  let Resolver;
+
+  beforeEach(() => {
+    console.warn.mockImplementation(() => {});
+    Resolver = require('jest-resolve');
+    Resolver.findNodeModule = jest.fn(name =>
+      name.startsWith('/') ? name : '/root/path/foo' + path.sep + name,
+    );
+  });
+
+  it('logs a deprecation warning when `setupTestFrameworkScriptFile` is used', () => {
+    normalize(
+      {
+        rootDir: '/root/path/foo',
+        setupTestFrameworkScriptFile: 'bar/baz',
+      },
+      {},
+    );
+
+    expect(console.warn.mock.calls[0][0]).toMatchSnapshot();
+  });
+
+  it('logs an error when `setupTestFrameworkScriptFile` and `setupFilesAfterEnv` are used', () => {
+    expect(() =>
+      normalize(
+        {
+          rootDir: '/root/path/foo',
+          setupFilesAfterEnv: ['bar/baz'],
+          setupTestFrameworkScriptFile: 'bar/baz',
+        },
+        {},
+      ),
+    ).toThrowErrorMatchingSnapshot();
   });
 });
 
@@ -627,11 +690,8 @@ describe('testEnvironment', () => {
   beforeEach(() => {
     Resolver = require('jest-resolve');
     Resolver.findNodeModule = jest.fn(name => {
-      if (name === 'jsdom') {
-        return 'node_modules/jsdom';
-      }
-      if (name === 'jest-environment-jsdom') {
-        return 'node_modules/jest-environment-jsdom';
+      if (['jsdom', 'jest-environment-jsdom'].includes(name)) {
+        return `node_modules/${name}`;
       }
       if (name.startsWith('/root')) {
         return name;
@@ -683,11 +743,10 @@ describe('babel-jest', () => {
   let Resolver;
   beforeEach(() => {
     Resolver = require('jest-resolve');
-    Resolver.findNodeModule = jest.fn(
-      name =>
-        name.indexOf('babel-jest') === -1
-          ? path.sep + 'node_modules' + path.sep + name
-          : name,
+    Resolver.findNodeModule = jest.fn(name =>
+      name.indexOf('babel-jest') === -1
+        ? path.sep + 'node_modules' + path.sep + name
+        : name,
     );
   });
 
@@ -701,14 +760,6 @@ describe('babel-jest', () => {
 
     expect(options.transform[0][0]).toBe(DEFAULT_JS_PATTERN);
     expect(options.transform[0][1]).toEqual(require.resolve('babel-jest'));
-    expect(options.setupFiles).toEqual([
-      path.sep +
-        'node_modules' +
-        path.sep +
-        'regenerator-runtime' +
-        path.sep +
-        'runtime',
-    ]);
   });
 
   it('uses babel-jest if babel-jest is explicitly specified in a custom transform options', () => {
@@ -725,47 +776,12 @@ describe('babel-jest', () => {
 
     expect(options.transform[0][0]).toBe(customJSPattern);
     expect(options.transform[0][1]).toEqual(require.resolve('babel-jest'));
-    expect(options.setupFiles).toEqual([
-      path.sep +
-        'node_modules' +
-        path.sep +
-        'regenerator-runtime' +
-        path.sep +
-        'runtime',
-    ]);
-  });
-
-  it('uses regenerator if babel-jest is explicitly specified', () => {
-    const ROOT_DIR = '<rootDir>' + path.sep;
-
-    const {options} = normalize(
-      {
-        rootDir: '/root',
-        transform: {
-          [DEFAULT_JS_PATTERN]:
-            ROOT_DIR + Resolver.findNodeModule('babel-jest'),
-        },
-      },
-      {},
-    );
-
-    expect(options.setupFiles).toEqual([
-      path.sep +
-        'node_modules' +
-        path.sep +
-        'regenerator-runtime' +
-        path.sep +
-        'runtime',
-    ]);
   });
 });
 
 describe('Upgrade help', () => {
-  let consoleWarn;
-
   beforeEach(() => {
-    consoleWarn = console.warn;
-    console.warn = jest.fn();
+    console.warn.mockImplementation(() => {});
 
     const Resolver = require('jest-resolve');
     Resolver.findNodeModule = jest.fn(name => {
@@ -774,10 +790,6 @@ describe('Upgrade help', () => {
       }
       return findNodeModule(name);
     });
-  });
-
-  afterEach(() => {
-    console.warn = consoleWarn;
   });
 
   it('logs a warning when `scriptPreprocessor` and/or `preprocessorIgnorePatterns` are used', () => {
@@ -804,6 +816,42 @@ describe('Upgrade help', () => {
   });
 });
 
+describe('testRegex', () => {
+  it('testRegex empty string is mapped to empty array', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root',
+        testRegex: '',
+      },
+      {},
+    );
+
+    expect(options.testRegex).toEqual([]);
+  });
+  it('testRegex string is mapped to an array', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root',
+        testRegex: '.*',
+      },
+      {},
+    );
+
+    expect(options.testRegex).toEqual(['.*']);
+  });
+  it('testRegex array is preserved', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root',
+        testRegex: ['.*', 'foo\\.bar'],
+      },
+      {},
+    );
+
+    expect(options.testRegex).toEqual(['.*', 'foo\\.bar']);
+  });
+});
+
 describe('testMatch', () => {
   it('testMatch default not applied if testRegex is set', () => {
     const {options} = normalize(
@@ -826,7 +874,7 @@ describe('testMatch', () => {
       {},
     );
 
-    expect(options.testRegex).toBe('');
+    expect(options.testRegex).toEqual([]);
   });
 
   it('throws if testRegex and testMatch are both specified', () => {
@@ -885,6 +933,11 @@ describe('preset', () => {
       if (name === 'react-native/jest-preset') {
         return '/node_modules/react-native/jest-preset.json';
       }
+
+      if (name === 'doesnt-exist') {
+        return null;
+      }
+
       return '/node_modules/' + name;
     });
     jest.doMock(
@@ -893,6 +946,7 @@ describe('preset', () => {
         moduleNameMapper: {b: 'b'},
         modulePathIgnorePatterns: ['b'],
         setupFiles: ['b'],
+        setupFilesAfterEnv: ['b'],
         transform: {b: 'b'},
       }),
       {virtual: true},
@@ -908,6 +962,15 @@ describe('preset', () => {
     );
     jest.mock(
       '/node_modules/with-js-ext/jest-preset.js',
+      () => ({
+        moduleNameMapper: {
+          js: true,
+        },
+      }),
+      {virtual: true},
+    );
+    jest.mock(
+      '/node_modules/exist-but-no-jest-preset/index.js',
       () => ({
         moduleNameMapper: {
           js: true,
@@ -933,9 +996,21 @@ describe('preset', () => {
     }).toThrowErrorMatchingSnapshot();
   });
 
+  test('throws when module was found but no "jest-preset.js" or "jest-preset.json" files', () => {
+    expect(() => {
+      normalize(
+        {
+          preset: 'exist-but-no-jest-preset',
+          rootDir: '/root/path/foo',
+        },
+        {},
+      );
+    }).toThrowErrorMatchingSnapshot();
+  });
+
   test('throws when preset is invalid', () => {
     jest.doMock('/node_modules/react-native/jest-preset.json', () =>
-      require.requireActual('./jest-preset.json'),
+      jest.requireActual('./jest-preset.json'),
     );
 
     expect(() => {
@@ -946,7 +1021,7 @@ describe('preset', () => {
         },
         {},
       );
-    }).toThrowErrorMatchingSnapshot();
+    }).toThrowError(/Unexpected token }/);
   });
 
   test('works with "react-native"', () => {
@@ -1052,6 +1127,18 @@ describe('preset', () => {
       ['a', '/node_modules/aa'],
     ]);
   });
+
+  test('extracts setupFilesAfterEnv from preset', () => {
+    const {options} = normalize(
+      {
+        preset: 'react-native',
+        rootDir: '/root/path/foo',
+      },
+      {},
+    );
+
+    expect(options.setupFilesAfterEnv).toEqual(['/node_modules/b']);
+  });
 });
 
 describe('preset without setupFiles', () => {
@@ -1066,12 +1153,10 @@ describe('preset without setupFiles', () => {
   beforeAll(() => {
     jest.doMock(
       '/node_modules/react-foo/jest-preset',
-      () => {
-        return {
-          moduleNameMapper: {b: 'b'},
-          modulePathIgnorePatterns: ['b'],
-        };
-      },
+      () => ({
+        moduleNameMapper: {b: 'b'},
+        modulePathIgnorePatterns: ['b'],
+      }),
       {virtual: true},
     );
   });
@@ -1091,13 +1176,66 @@ describe('preset without setupFiles', () => {
     );
 
     expect(options).toEqual(
-      expect.objectContaining({
-        setupFiles: [
-          '/node_modules/regenerator-runtime/runtime',
-          '/node_modules/a',
-        ],
-      }),
+      expect.objectContaining({setupFiles: ['/node_modules/a']}),
     );
+  });
+});
+
+describe('runner', () => {
+  let Resolver;
+  beforeEach(() => {
+    Resolver = require('jest-resolve');
+    Resolver.findNodeModule = jest.fn(name => {
+      if (['eslint', 'jest-runner-eslint', 'my-runner-foo'].includes(name)) {
+        return `node_modules/${name}`;
+      }
+      if (name.startsWith('/root')) {
+        return name;
+      }
+      return findNodeModule(name);
+    });
+  });
+
+  it('defaults to `jest-runner`', () => {
+    const {options} = normalize({rootDir: '/root'}, {});
+
+    expect(options.runner).toBe('jest-runner');
+  });
+
+  it('resolves to runners that do not have the prefix', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root/',
+        runner: 'my-runner-foo',
+      },
+      {},
+    );
+
+    expect(options.runner).toBe('node_modules/my-runner-foo');
+  });
+
+  it('resolves to runners and prefers jest-runner-`name`', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root/',
+        runner: 'eslint',
+      },
+      {},
+    );
+
+    expect(options.runner).toBe('node_modules/jest-runner-eslint');
+  });
+
+  it('throw error when a runner is not found', () => {
+    expect(() =>
+      normalize(
+        {
+          rootDir: '/root/',
+          runner: 'missing-runner',
+        },
+        {},
+      ),
+    ).toThrowErrorMatchingSnapshot();
   });
 });
 
@@ -1106,10 +1244,16 @@ describe('watchPlugins', () => {
   beforeEach(() => {
     Resolver = require('jest-resolve');
     Resolver.findNodeModule = jest.fn(name => {
-      if (name.startsWith(path.sep)) {
+      if (
+        ['typeahead', 'jest-watch-typeahead', 'my-watch-plugin'].includes(name)
+      ) {
+        return `node_modules/${name}`;
+      }
+
+      if (name.startsWith('/root')) {
         return name;
       }
-      return path.sep + 'node_modules' + path.sep + name;
+      return findNodeModule(name);
     });
   });
 
@@ -1119,19 +1263,59 @@ describe('watchPlugins', () => {
     expect(options.watchPlugins).toEqual(undefined);
   });
 
-  it('normalizes watchPlugins', () => {
+  it('resolves to watch plugins and prefers jest-watch-`name`', () => {
     const {options} = normalize(
       {
         rootDir: '/root/',
-        watchPlugins: ['my-watch-plugin', '<rootDir>/path/to/plugin'],
+        watchPlugins: ['typeahead'],
       },
       {},
     );
 
     expect(options.watchPlugins).toEqual([
-      '/node_modules/my-watch-plugin',
-      '/root/path/to/plugin',
+      {config: {}, path: 'node_modules/jest-watch-typeahead'},
     ]);
+  });
+
+  it('resolves watch plugins that do not have the prefix', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root/',
+        watchPlugins: ['my-watch-plugin'],
+      },
+      {},
+    );
+
+    expect(options.watchPlugins).toEqual([
+      {config: {}, path: 'node_modules/my-watch-plugin'},
+    ]);
+  });
+
+  it('normalizes multiple watchPlugins', () => {
+    const {options} = normalize(
+      {
+        rootDir: '/root/',
+        watchPlugins: ['jest-watch-typeahead', '<rootDir>/path/to/plugin'],
+      },
+      {},
+    );
+
+    expect(options.watchPlugins).toEqual([
+      {config: {}, path: 'node_modules/jest-watch-typeahead'},
+      {config: {}, path: '/root/path/to/plugin'},
+    ]);
+  });
+
+  it('throw error when a watch plugin is not found', () => {
+    expect(() =>
+      normalize(
+        {
+          rootDir: '/root/',
+          watchPlugins: ['missing-plugin'],
+        },
+        {},
+      ),
+    ).toThrowErrorMatchingSnapshot();
   });
 });
 
@@ -1191,7 +1375,7 @@ describe('testPathPattern', () => {
 
       describe('win32', () => {
         beforeEach(() => {
-          jest.mock('path', () => require.requireActual('path').win32);
+          jest.mock('path', () => jest.requireActual('path').win32);
           require('jest-resolve').findNodeModule = findNodeModule;
         });
 
@@ -1247,5 +1431,56 @@ describe('testPathPattern', () => {
     });
 
     expect(options.onlyChanged).toBe(false);
+  });
+});
+
+describe('moduleFileExtensions', () => {
+  it('defaults to something useful', () => {
+    const {options} = normalize({rootDir: '/root'}, {});
+
+    expect(options.moduleFileExtensions).toEqual([
+      'js',
+      'json',
+      'jsx',
+      'ts',
+      'tsx',
+      'node',
+    ]);
+  });
+
+  it('throws if missing `js` but using jest-runner', () => {
+    [undefined, 'jest-runner'].forEach(runner =>
+      expect(() =>
+        normalize(
+          {
+            rootDir: '/root/',
+            moduleFileExtensions: ['json', 'jsx'],
+            runner,
+          },
+          {},
+        ),
+      ).toThrowError("moduleFileExtensions must include 'js'"),
+    );
+  });
+
+  it('does not throw if missing `js` with a custom runner', () => {
+    expect(() =>
+      normalize(
+        {
+          rootDir: '/root/',
+          moduleFileExtensions: ['json', 'jsx'],
+          runner: './', // does not need to be a valid runner for this validation
+        },
+        {},
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('Defaults', () => {
+  it('should be accepted by normalize', () => {
+    normalize({...Defaults, rootDir: '/root'}, {});
+
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });

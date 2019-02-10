@@ -171,7 +171,7 @@ If you only need to run some setup code once, before any tests run, use `beforeA
 
 ### `describe(name, fn)`
 
-`describe(name, fn)` creates a block that groups together several related tests in one "test suite". For example, if you have a `myBeverage` object that is supposed to be delicious but not sour, you could test it with:
+`describe(name, fn)` creates a block that groups together several related tests. For example, if you have a `myBeverage` object that is supposed to be delicious but not sour, you could test it with:
 
 ```js
 const myBeverage = {
@@ -222,25 +222,29 @@ describe('binaryStringToNumber', () => {
 });
 ```
 
-### `describe.each(table)(name, fn)`
+### `describe.each(table)(name, fn, timeout)`
 
 Use `describe.each` if you keep duplicating the same test suites with different data. `describe.each` allows you to write the test suite once and pass data in.
 
 `describe.each` is available with two APIs:
 
-#### 1. `describe.each(table)(name, fn)`
+#### 1. `describe.each(table)(name, fn, timeout)`
 
 - `table`: `Array` of Arrays with the arguments that are passed into the `fn` for each row.
+  - _Note_ If you pass in a 1D array of primitives, internally it will be mapped to a table i.e. `[1, 2, 3] -> [[1], [2], [3]]`
 - `name`: `String` the title of the test suite.
   - Generate unique test titles by positionally injecting parameters with [`printf` formatting](https://nodejs.org/api/util.html#util_util_format_format_args):
+    - `%p` - [pretty-format](https://www.npmjs.com/package/pretty-format).
     - `%s`- String.
     - `%d`- Number.
     - `%i` - Integer.
     - `%f` - Floating point value.
     - `%j` - JSON.
     - `%o` - Object.
+    - `%#` - Index of the test case.
     - `%%` - single percent sign ('%'). This does not consume an argument.
 - `fn`: `Function` the suite of tests to be ran, this is the function that will receive the parameters in each row as function arguments.
+- Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. _Note: The default timeout is 5 seconds._
 
 Example:
 
@@ -263,13 +267,15 @@ describe.each([[1, 1, 2], [1, 2, 3], [2, 1, 3]])(
 );
 ```
 
-#### 2. `` describe.each`table`(name, fn) ``
+#### 2. `` describe.each`table`(name, fn, timeout) ``
 
 - `table`: `Tagged Template Literal`
   - First row of variable name column headings separated with `|`
   - One or more subsequent rows of data supplied as template literal expressions using `${value}` syntax.
 - `name`: `String` the title of the test suite, use `$variable` to inject test data into the suite title from the tagged template expressions.
+  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
 - `fn`: `Function` the suite of tests to be ran, this is the function that will receive the test data object.
+- Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. _Note: The default timeout is 5 seconds._
 
 Example:
 
@@ -428,14 +434,6 @@ test('will be ran', () => {
 });
 ```
 
-### `require.requireActual(moduleName)`
-
-Returns the actual module instead of a mock, bypassing all checks on whether the module should receive a mock implementation or not.
-
-### `require.requireMock(moduleName)`
-
-Returns a mock module instead of the actual module, bypassing all checks on whether the module should be required normally or not.
-
 ### `test(name, fn, timeout)`
 
 Also under the alias: `it(name, fn, timeout)`
@@ -464,7 +462,7 @@ test('has lemon in it', () => {
 
 Even though the call to `test` will return right away, the test doesn't complete until the promise resolves as well.
 
-### `test.each(table)(name, fn)`
+### `test.each(table)(name, fn, timeout)`
 
 Also under the alias: `it.each(table)(name, fn)` and `` it.each`table`(name, fn) ``
 
@@ -472,19 +470,23 @@ Use `test.each` if you keep duplicating the same test with different data. `test
 
 `test.each` is available with two APIs:
 
-#### 1. `test.each(table)(name, fn)`
+#### 1. `test.each(table)(name, fn, timeout)`
 
 - `table`: `Array` of Arrays with the arguments that are passed into the test `fn` for each row.
+  - _Note_ If you pass in a 1D array of primitives, internally it will be mapped to a table i.e. `[1, 2, 3] -> [[1], [2], [3]]`
 - `name`: `String` the title of the test block.
   - Generate unique test titles by positionally injecting parameters with [`printf` formatting](https://nodejs.org/api/util.html#util_util_format_format_args):
+    - `%p` - [pretty-format](https://www.npmjs.com/package/pretty-format).
     - `%s`- String.
     - `%d`- Number.
     - `%i` - Integer.
     - `%f` - Floating point value.
     - `%j` - JSON.
     - `%o` - Object.
+    - `%#` - Index of the test case.
     - `%%` - single percent sign ('%'). This does not consume an argument.
 - `fn`: `Function` the test to be ran, this is the function that will receive the parameters in each row as function arguments.
+- Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. _Note: The default timeout is 5 seconds._
 
 Example:
 
@@ -497,13 +499,15 @@ test.each([[1, 1, 2], [1, 2, 3], [2, 1, 3]])(
 );
 ```
 
-#### 2. `` test.each`table`(name, fn) ``
+#### 2. `` test.each`table`(name, fn, timeout) ``
 
 - `table`: `Tagged Template Literal`
   - First row of variable name column headings separated with `|`
   - One or more subsequent rows of data supplied as template literal expressions using `${value}` syntax.
 - `name`: `String` the title of the test, use `$variable` to inject test data into the test title from the tagged template expressions.
+  - To inject nested object values use you can supply a keyPath i.e. `$variable.path.to.value`
 - `fn`: `Function` the test to be ran, this is the function that will receive the test data object.
+- Optionally, you can provide a `timeout` (in milliseconds) for specifying how long to wait for each row before aborting. _Note: The default timeout is 5 seconds._
 
 Example:
 
@@ -642,4 +646,22 @@ test.skip.each`
 test('will be ran', () => {
   expect(1 / 0).toBe(Infinity);
 });
+```
+
+### `test.todo(name)`
+
+Use `test.todo` when you are planning on writing tests. These tests will be highlighted in the summary output at the end so you know how many tests you still need todo.
+
+_Note_: If you supply a test callback function then the `test.todo` will throw an error. If you have already implemented the test and it is broken and you do not want it to run, then use `test.skip` instead.
+
+#### API
+
+- `name`: `String` the title of the test plan.
+
+Example:
+
+```js
+const add = (a, b) => a + b;
+
+test.todo('add should be associative');
 ```

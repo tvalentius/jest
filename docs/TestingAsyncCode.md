@@ -5,7 +5,7 @@ title: Testing Asynchronous Code
 
 It's common in JavaScript for code to run asynchronously. When you have code that runs asynchronously, Jest needs to know when the code it is testing has completed, before it can move on to another test. Jest has several ways to handle this.
 
-### Callbacks
+## Callbacks
 
 The most common asynchronous pattern is callbacks.
 
@@ -41,7 +41,7 @@ test('the data is peanut butter', done => {
 
 If `done()` is never called, the test will fail, which is what you want to happen.
 
-### Promises
+## Promises
 
 If your code uses promises, there is a simpler way to handle asynchronous tests. Just return a promise from your test, and Jest will wait for that promise to resolve. If the promise is rejected, the test will automatically fail.
 
@@ -49,14 +49,13 @@ For example, let's say that `fetchData`, instead of using a callback, returns a 
 
 ```js
 test('the data is peanut butter', () => {
-  expect.assertions(1);
   return fetchData().then(data => {
     expect(data).toBe('peanut butter');
   });
 });
 ```
 
-Be sure to return the promise - if you omit this `return` statement, your test will complete before `fetchData` completes.
+Be sure to return the promise - if you omit this `return` statement, your test will complete before the promise returned from `fetchData` resolves and then() has a chance to execute the callback.
 
 If you expect a promise to be rejected use the `.catch` method. Make sure to add `expect.assertions` to verify that a certain number of assertions are called. Otherwise a fulfilled promise would not fail the test.
 
@@ -67,29 +66,27 @@ test('the fetch fails with an error', () => {
 });
 ```
 
-### `.resolves` / `.rejects`
+## `.resolves` / `.rejects`
 
 You can also use the `.resolves` matcher in your expect statement, and Jest will wait for that promise to resolve. If the promise is rejected, the test will automatically fail.
 
 ```js
 test('the data is peanut butter', () => {
-  expect.assertions(1);
   return expect(fetchData()).resolves.toBe('peanut butter');
 });
 ```
 
-Be sure to return the assertion—if you omit this `return` statement, your test will complete before `fetchData` completes.
+Be sure to return the assertion—if you omit this `return` statement, your test will complete before the promise returned from `fetchData` is resolved and then() has a chance to execute the callback.
 
 If you expect a promise to be rejected use the `.rejects` matcher. It works analogically to the `.resolves` matcher. If the promise is fulfilled, the test will automatically fail.
 
 ```js
 test('the fetch fails with an error', () => {
-  expect.assertions(1);
   return expect(fetchData()).rejects.toMatch('error');
 });
 ```
 
-### Async/Await
+## Async/Await
 
 Alternatively, you can use `async` and `await` in your tests. To write an async test, just use the `async` keyword in front of the function passed to `test`. For example, the same `fetchData` scenario can be tested with:
 
@@ -114,13 +111,11 @@ Of course, you can combine `async` and `await` with `.resolves` or `.rejects`.
 
 ```js
 test('the data is peanut butter', async () => {
-  expect.assertions(1);
   await expect(fetchData()).resolves.toBe('peanut butter');
 });
 
 test('the fetch fails with an error', async () => {
-  expect.assertions(1);
-  await expect(fetchData()).rejects.toMatch('error');
+  await expect(fetchData()).rejects.toThrow('error');
 });
 ```
 

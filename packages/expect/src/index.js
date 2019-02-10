@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -23,11 +23,11 @@ import type {
 import * as matcherUtils from 'jest-matcher-utils';
 import {iterableEquality, subsetEquality} from './utils';
 import matchers from './matchers';
-import spyMatchers from './spy_matchers';
+import spyMatchers from './spyMatchers';
 import toThrowMatchers, {
   createMatcher as createThrowMatcher,
-} from './to_throw_matchers';
-import {equals} from './jasmine_utils';
+} from './toThrowMatchers';
+import {equals} from './jasmineUtils';
 import {
   any,
   anything,
@@ -39,38 +39,38 @@ import {
   stringNotContaining,
   stringMatching,
   stringNotMatching,
-} from './asymmetric_matchers';
+} from './asymmetricMatchers';
 import {
   INTERNAL_MATCHER_FLAG,
   getState,
   setState,
   getMatchers,
   setMatchers,
-} from './jest_matchers_object';
-import extractExpectedAssertionsErrors from './extract_expected_assertions_errors';
+} from './jestMatchersObject';
+import extractExpectedAssertionsErrors from './extractExpectedAssertionsErrors';
 
 class JestAssertionError extends Error {
   matcherResult: any;
 }
 
-const isPromise = obj => {
-  return (
-    !!obj &&
-    (typeof obj === 'object' || typeof obj === 'function') &&
-    typeof obj.then === 'function'
-  );
-};
+const isPromise = obj =>
+  !!obj &&
+  (typeof obj === 'object' || typeof obj === 'function') &&
+  typeof obj.then === 'function';
 
 const createToThrowErrorMatchingSnapshotMatcher = function(matcher) {
-  return function(received: any, testName?: string) {
-    return matcher.apply(this, [received, testName, true]);
+  return function(received: any, testNameOrInlineSnapshot?: string) {
+    return matcher.apply(this, [received, testNameOrInlineSnapshot, true]);
   };
 };
 
 const getPromiseMatcher = (name, matcher) => {
   if (name === 'toThrow' || name === 'toThrowError') {
-    return createThrowMatcher('.' + name, true);
-  } else if (name === 'toThrowErrorMatchingSnapshot') {
+    return createThrowMatcher(name, true);
+  } else if (
+    name === 'toThrowErrorMatchingSnapshot' ||
+    name === 'toThrowErrorMatchingInlineSnapshot'
+  ) {
     return createToThrowErrorMatchingSnapshotMatcher(matcher);
   }
 
@@ -94,8 +94,8 @@ const expect = (actual: any, ...rest): ExpectationObject => {
   Object.keys(allMatchers).forEach(name => {
     const matcher = allMatchers[name];
     const promiseMatcher = getPromiseMatcher(name, matcher) || matcher;
-    expectation[name] = makeThrowingMatcher(matcher, false, actual);
-    expectation.not[name] = makeThrowingMatcher(matcher, true, actual);
+    expectation[name] = makeThrowingMatcher(matcher, false, '', actual);
+    expectation.not[name] = makeThrowingMatcher(matcher, true, '', actual);
 
     expectation.resolves[name] = makeResolveMatcher(
       name,
@@ -131,12 +131,9 @@ const expect = (actual: any, ...rest): ExpectationObject => {
   return expectation;
 };
 
-const getMessage = message => {
-  return (
-    (message && message()) ||
-    matcherUtils.RECEIVED_COLOR('No message was specified for this matcher.')
-  );
-};
+const getMessage = message =>
+  (message && message()) ||
+  matcherUtils.RECEIVED_COLOR('No message was specified for this matcher.');
 
 const makeResolveMatcher = (
   matcherName: string,
@@ -145,19 +142,22 @@ const makeResolveMatcher = (
   actual: Promise<any>,
   outerErr: JestAssertionError,
 ): PromiseMatcherFn => (...args) => {
-  const matcherStatement = `.resolves.${isNot ? 'not.' : ''}${matcherName}`;
+  const options = {
+    isNot,
+    promise: 'resolves',
+  };
+
   if (!isPromise(actual)) {
     throw new JestAssertionError(
-      matcherUtils.matcherHint(matcherStatement, 'received', '') +
-        '\n\n' +
-        `${matcherUtils.RECEIVED_COLOR(
-          'received',
-        )} value must be a Promise.\n` +
+      matcherUtils.matcherErrorMessage(
+        matcherUtils.matcherHint(matcherName, undefined, '', options),
+        `${matcherUtils.RECEIVED_COLOR('received')} value must be a promise`,
         matcherUtils.printWithType(
           'Received',
           actual,
           matcherUtils.printReceived,
         ),
+      ),
     );
   }
 
@@ -165,16 +165,16 @@ const makeResolveMatcher = (
 
   return actual.then(
     result =>
-      makeThrowingMatcher(matcher, isNot, result, innerErr).apply(null, args),
+      makeThrowingMatcher(matcher, isNot, 'resolves', result, innerErr).apply(
+        null,
+        args,
+      ),
     reason => {
       outerErr.message =
-        matcherUtils.matcherHint(matcherStatement, 'received', '') +
+        matcherUtils.matcherHint(matcherName, undefined, '', options) +
         '\n\n' +
-        `Expected ${matcherUtils.RECEIVED_COLOR(
-          'received',
-        )} Promise to resolve, ` +
-        'instead it rejected to value\n' +
-        `  ${matcherUtils.printReceived(reason)}`;
+        `Received promise rejected instead of resolved\n` +
+        `Rejected to value: ${matcherUtils.printReceived(reason)}`;
       return Promise.reject(outerErr);
     },
   );
@@ -187,19 +187,22 @@ const makeRejectMatcher = (
   actual: Promise<any>,
   outerErr: JestAssertionError,
 ): PromiseMatcherFn => (...args) => {
-  const matcherStatement = `.rejects.${isNot ? 'not.' : ''}${matcherName}`;
+  const options = {
+    isNot,
+    promise: 'rejects',
+  };
+
   if (!isPromise(actual)) {
     throw new JestAssertionError(
-      matcherUtils.matcherHint(matcherStatement, 'received', '') +
-        '\n\n' +
-        `${matcherUtils.RECEIVED_COLOR(
-          'received',
-        )} value must be a Promise.\n` +
+      matcherUtils.matcherErrorMessage(
+        matcherUtils.matcherHint(matcherName, undefined, '', options),
+        `${matcherUtils.RECEIVED_COLOR('received')} value must be a promise`,
         matcherUtils.printWithType(
           'Received',
           actual,
           matcherUtils.printReceived,
         ),
+      ),
     );
   }
 
@@ -208,47 +211,45 @@ const makeRejectMatcher = (
   return actual.then(
     result => {
       outerErr.message =
-        matcherUtils.matcherHint(matcherStatement, 'received', '') +
+        matcherUtils.matcherHint(matcherName, undefined, '', options) +
         '\n\n' +
-        `Expected ${matcherUtils.RECEIVED_COLOR(
-          'received',
-        )} Promise to reject, ` +
-        'instead it resolved to value\n' +
-        `  ${matcherUtils.printReceived(result)}`;
+        `Received promise resolved instead of rejected\n` +
+        `Resolved to value: ${matcherUtils.printReceived(result)}`;
       return Promise.reject(outerErr);
     },
     reason =>
-      makeThrowingMatcher(matcher, isNot, reason, innerErr).apply(null, args),
+      makeThrowingMatcher(matcher, isNot, 'rejects', reason, innerErr).apply(
+        null,
+        args,
+      ),
   );
 };
 
 const makeThrowingMatcher = (
   matcher: RawMatcherFn,
   isNot: boolean,
+  promise: string,
   actual: any,
   err?: JestAssertionError,
-): ThrowingMatcherFn => {
-  return function throwingMatcher(...args): any {
+): ThrowingMatcherFn =>
+  function throwingMatcher(...args): any {
     let throws = true;
-    const utils = Object.assign({}, matcherUtils, {
-      iterableEquality,
-      subsetEquality,
-    });
+    const utils = {...matcherUtils, iterableEquality, subsetEquality};
 
-    const matcherContext: MatcherState = Object.assign(
+    const matcherContext: MatcherState = {
       // When throws is disabled, the matcher will not throw errors during test
       // execution but instead add them to the global matcher state. If a
       // matcher throws, test execution is normally stopped immediately. The
       // snapshot matcher uses it because we want to log all snapshot
       // failures in a test.
-      {dontThrow: () => (throws = false)},
-      getState(),
-      {
-        equals,
-        isNot,
-        utils,
-      },
-    );
+      dontThrow: () => (throws = false),
+      ...getState(),
+      equals,
+      error: err,
+      isNot,
+      promise,
+      utils,
+    };
 
     const processResult = (result: SyncExpectationResult) => {
       _validateResult(result);
@@ -319,7 +320,6 @@ const makeThrowingMatcher = (
       return handlError(error);
     }
   };
-};
 
 expect.extend = (matchers: MatchersObject): void =>
   setMatchers(matchers, false, expect);

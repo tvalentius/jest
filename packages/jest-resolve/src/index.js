@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,11 +12,11 @@ import type {ModuleMap} from 'types/HasteMap';
 import type {ResolveModuleConfig} from 'types/Resolve';
 import type {ErrorWithCode} from 'types/Errors';
 
-import fs from 'fs';
 import path from 'path';
-import nodeModulesPaths from './node_modules_paths';
-import isBuiltinModule from './is_builtin_module';
-import defaultResolver from './default_resolver.js';
+import {sync as realpath} from 'realpath-native';
+import nodeModulesPaths from './nodeModulesPaths';
+import isBuiltinModule from './isBuiltinModule';
+import defaultResolver from './defaultResolver';
 import chalk from 'chalk';
 
 type ResolverConfig = {|
@@ -53,7 +53,7 @@ const NATIVE_PLATFORM = 'native';
 
 // We might be inside a symlink.
 const cwd = process.cwd();
-const resolvedCwd = fs.realpathSync(cwd) || cwd;
+const resolvedCwd = realpath(cwd) || cwd;
 const nodePaths = process.env.NODE_PATH
   ? process.env.NODE_PATH.split(path.delimiter)
       .filter(Boolean)
@@ -67,6 +67,7 @@ class Resolver {
   _moduleIDCache: {[key: string]: string, __proto__: null};
   _moduleNameCache: {[name: string]: Path, __proto__: null};
   _modulePathCache: {[path: Path]: Array<Path>, __proto__: null};
+  _supportsNativePlatform: boolean;
 
   constructor(moduleMap: ModuleMap, options: ResolverConfig) {
     this._options = {
@@ -82,6 +83,9 @@ class Resolver {
       resolver: options.resolver,
       rootDir: options.rootDir,
     };
+    this._supportsNativePlatform = options.platforms
+      ? options.platforms.includes(NATIVE_PLATFORM)
+      : false;
     this._moduleMap = moduleMap;
     this._moduleIDCache = Object.create(null);
     this._moduleNameCache = Object.create(null);
@@ -99,6 +103,7 @@ class Resolver {
       return resolver(path, {
         basedir: options.basedir,
         browser: options.browser,
+        defaultResolver,
         extensions: options.extensions,
         moduleDirectory: options.moduleDirectory,
         paths: paths ? (nodePaths || []).concat(paths) : nodePaths,
@@ -108,18 +113,19 @@ class Resolver {
     return null;
   }
 
-  resolveModule(
-    from: Path,
+  resolveModuleFromDirIfExists(
+    dirname: Path,
     moduleName: string,
     options?: ResolveModuleConfig,
-  ): Path {
-    const dirname = path.dirname(from);
-    const paths = this._options.modulePaths;
+  ): ?Path {
+    const paths = (options && options.paths) || this._options.modulePaths;
     const moduleDirectory = this._options.moduleDirectories;
     const key = dirname + path.delimiter + moduleName;
     const defaultPlatform = this._options.defaultPlatform;
     const extensions = this._options.extensions.slice();
-    if (this._supportsNativePlatform()) {
+    let module;
+
+    if (this._supportsNativePlatform) {
       extensions.unshift(
         ...this._options.extensions.map(ext => '.' + NATIVE_PLATFORM + ext),
       );
@@ -130,29 +136,29 @@ class Resolver {
       );
     }
 
-    // 0. If we have already resolved this module for this directory name,
-    //    return a value from the cache.
+    // 1. If we have already resolved this module for this directory name,
+    // return a value from the cache.
     if (this._moduleNameCache[key]) {
       return this._moduleNameCache[key];
     }
 
-    // 1. Check if the module is a haste module.
-    let module = this.getModule(moduleName);
+    // 2. Check if the module is a haste module.
+    module = this.getModule(moduleName);
     if (module) {
       return (this._moduleNameCache[key] = module);
     }
 
-    // 2. Check if the module is a node module and resolve it based on
-    //    the node module resolution algorithm.
-    // If skipNodeResolution is given we ignore all modules that look like
-    // node modules (ie. are not relative requires). This enables us to speed
-    // up resolution when we build a dependency graph because we don't have
-    // to look at modules that may not exist and aren't mocked.
+    // 3. Check if the module is a node module and resolve it based on
+    // the node module resolution algorithm. If skipNodeResolution is given we
+    // ignore all modules that look like node modules (ie. are not relative
+    // requires). This enables us to speed up resolution when we build a
+    // dependency graph because we don't have to look at modules that may not
+    // exist and aren't mocked.
     const skipResolution =
       options && options.skipNodeResolution && !moduleName.includes(path.sep);
 
-    const resolveNodeModule = name => {
-      return Resolver.findNodeModule(name, {
+    const resolveNodeModule = name =>
+      Resolver.findNodeModule(name, {
         basedir: dirname,
         browser: this._options.browser,
         extensions,
@@ -161,7 +167,6 @@ class Resolver {
         resolver: this._options.resolver,
         rootDir: this._options.rootDir,
       });
-    };
 
     if (!skipResolution) {
       module = resolveNodeModule(moduleName);
@@ -171,7 +176,7 @@ class Resolver {
       }
     }
 
-    // 3. Resolve "haste packages" which are `package.json` files outside of
+    // 4. Resolve "haste packages" which are `package.json` files outside of
     // `node_modules` folders anywhere in the file system.
     const parts = moduleName.split('/');
     const hastePackage = this.getPackage(parts.shift());
@@ -188,9 +193,25 @@ class Resolver {
       } catch (ignoredError) {}
     }
 
-    // 4. Throw an error if the module could not be found. `resolve.sync`
-    //    only produces an error based on the dirname but we have the actual
-    //    current module name available.
+    return null;
+  }
+
+  resolveModule(
+    from: Path,
+    moduleName: string,
+    options?: ResolveModuleConfig,
+  ): Path {
+    const dirname = path.dirname(from);
+    const module = this.resolveModuleFromDirIfExists(
+      dirname,
+      moduleName,
+      options,
+    );
+    if (module) return module;
+
+    // 5. Throw an error if the module could not be found. `resolve.sync` only
+    // produces an error based on the dirname but we have the actual current
+    // module name available.
     const relativePath = path.relative(dirname, from);
     const err = new Error(
       `Cannot find module '${moduleName}' from '${relativePath || '.'}'`,
@@ -207,7 +228,7 @@ class Resolver {
     return this._moduleMap.getModule(
       name,
       this._options.defaultPlatform,
-      this._supportsNativePlatform(),
+      this._supportsNativePlatform,
     );
   }
 
@@ -222,7 +243,7 @@ class Resolver {
     return this._moduleMap.getPackage(
       name,
       this._options.defaultPlatform,
-      this._supportsNativePlatform(),
+      this._supportsNativePlatform,
     );
   }
 
@@ -231,7 +252,7 @@ class Resolver {
     if (mock) {
       return mock;
     } else {
-      const moduleName = this._resolveStubModuleName(from, name);
+      const moduleName = this.resolveStubModuleName(from, name);
       if (moduleName) {
         return this.getModule(moduleName) || moduleName;
       }
@@ -265,7 +286,7 @@ class Resolver {
     }
 
     const moduleType = this._getModuleType(moduleName);
-    const absolutePath = this._getAbsolutPath(virtualMocks, from, moduleName);
+    const absolutePath = this._getAbsolutePath(virtualMocks, from, moduleName);
     const mockPath = this._getMockPath(from, moduleName);
 
     const sep = path.delimiter;
@@ -282,7 +303,7 @@ class Resolver {
     return this.isCoreModule(moduleName) ? 'node' : 'user';
   }
 
-  _getAbsolutPath(
+  _getAbsolutePath(
     virtualMocks: BooleanObject,
     from: Path,
     moduleName: string,
@@ -310,8 +331,8 @@ class Resolver {
     return virtualMocks[virtualMockPath]
       ? virtualMockPath
       : moduleName
-        ? this.resolveModule(from, moduleName)
-        : from;
+      ? this.resolveModule(from, moduleName)
+      : from;
   }
 
   _isModuleResolved(from: Path, moduleName: string): boolean {
@@ -320,13 +341,26 @@ class Resolver {
     );
   }
 
-  _resolveStubModuleName(from: Path, moduleName: string): ?Path {
+  resolveStubModuleName(from: Path, moduleName: string): ?Path {
     const dirname = path.dirname(from);
     const paths = this._options.modulePaths;
-    const extensions = this._options.extensions;
+    const extensions = this._options.extensions.slice();
     const moduleDirectory = this._options.moduleDirectories;
     const moduleNameMapper = this._options.moduleNameMapper;
     const resolver = this._options.resolver;
+    const defaultPlatform = this._options.defaultPlatform;
+
+    if (this._supportsNativePlatform) {
+      extensions.unshift(
+        ...this._options.extensions.map(ext => '.' + NATIVE_PLATFORM + ext),
+      );
+    }
+
+    if (defaultPlatform) {
+      extensions.unshift(
+        ...this._options.extensions.map(ext => '.' + defaultPlatform + ext),
+      );
+    }
 
     if (moduleNameMapper) {
       for (const {moduleName: mappedModuleName, regex} of moduleNameMapper) {
@@ -353,22 +387,13 @@ class Resolver {
               rootDir: this._options.rootDir,
             });
           if (!module) {
-            const error = new Error(
-              chalk.red(`${chalk.bold('Configuration error')}:
-
-Could not locate module ${chalk.bold(moduleName)} (mapped as ${chalk.bold(
-                updatedName,
-              )})
-
-Please check:
-
-"moduleNameMapper": {
-  "${regex.toString()}": "${chalk.bold(mappedModuleName)}"
-},
-"resolver": ${chalk.bold(String(resolver))}`),
+            throw createNoMappedModuleFoundError(
+              moduleName,
+              updatedName,
+              mappedModuleName,
+              regex,
+              resolver,
             );
-            error.stack = '';
-            throw error;
           }
           return module;
         }
@@ -376,10 +401,33 @@ Please check:
     }
     return null;
   }
-
-  _supportsNativePlatform() {
-    return (this._options.platforms || []).indexOf(NATIVE_PLATFORM) !== -1;
-  }
 }
+
+const createNoMappedModuleFoundError = (
+  moduleName,
+  updatedName,
+  mappedModuleName,
+  regex,
+  resolver,
+) => {
+  const error = new Error(
+    chalk.red(`${chalk.bold('Configuration error')}:
+
+Could not locate module ${chalk.bold(moduleName)} mapped as:
+${chalk.bold(updatedName)}.
+
+Please check your configuration for these entries:
+{
+  "moduleNameMapper": {
+    "${regex.toString()}": "${chalk.bold(mappedModuleName)}"
+  },
+  "resolver": ${chalk.bold(String(resolver))}
+}`),
+  );
+
+  error.name = '';
+
+  return error;
+};
 
 module.exports = Resolver;

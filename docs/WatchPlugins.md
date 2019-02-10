@@ -1,7 +1,6 @@
 ---
 id: watch-plugins
 title: Watch Plugins
-original_id: watch-plugins
 ---
 
 The Jest watch plugin system provides a way to hook into specific parts of Jest and to define watch mode menu prompts that execute code on key press. Combined, these features allow you to develop interactive experiences custom for your workflow.
@@ -23,6 +22,16 @@ class MyWatchPlugin {
 
 ## Hooking into Jest
 
+To connect your watch plugin to Jest, add its path under `watchPlugins` in your Jest configuration:
+
+```javascript
+// jest.config.js
+module.exports = {
+  // ...
+  watchPlugins: ['path/to/yourWatchPlugin'],
+};
+```
+
 Custom watch plugins can add hooks to Jest events. These hooks can be added either with or without having an interactive key in the watch mode menu.
 
 ### `apply(jestHooks)`
@@ -39,7 +48,7 @@ Below are the hooks available in Jest.
 
 #### `jestHooks.shouldRunTestSuite(testPath)`
 
-Returns a boolean (or `Promise<boolean>`) for handling asynchronous operations) to specify if a test should be run or not.
+Returns a boolean (or `Promise<boolean>` for handling asynchronous operations) to specify if a test should be run or not.
 
 For example:
 
@@ -138,3 +147,85 @@ class MyWatchPlugin {
   }
 }
 ```
+
+**Note**: If you do call `updateConfigAndRun`, your `run` method should not resolve to a truthy value, as that would trigger a double-run.
+
+#### Authorized configuration keys
+
+For stability and safety reasons, only part of the global configuration keys can be updated with `updateConfigAndRun`. The current white list is as follows:
+
+- [`bail`](configuration.html#bail-number-boolean)
+- [`changedSince`](cli.html#changedsince)
+- [`collectCoverage`](configuration.html#collectcoverage-boolean)
+- [`collectCoverageFrom`](configuration.html#collectcoveragefrom-array)
+- [`collectCoverageOnlyFrom`](configuration.html#collectcoverageonlyfrom-array)
+- [`coverageDirectory`](configuration.html#coveragedirectory-string)
+- [`coverageReporters`](configuration.html#coveragereporters-array)
+- [`notify`](configuration.html#notify-boolean)
+- [`notifyMode`](configuration.html#notifymode-string)
+- [`onlyFailures`](configuration.html#onlyfailures-boolean)
+- [`reporters`](configuration.html#reporters-array-modulename-modulename-options)
+- [`testNamePattern`](cli.html#testnamepattern-regex)
+- [`testPathPattern`](cli.html#testpathpattern-regex)
+- [`updateSnapshot`](cli.html#updatesnapshot)
+- [`verbose`](configuration.html#verbose-boolean)
+
+## Customization
+
+Plugins can be customized via your Jest configuration.
+
+```javascript
+// jest.config.js
+module.exports = {
+  // ...
+  watchPlugins: [
+    [
+      'path/to/yourWatchPlugin',
+      {
+        key: 'k', // <- your custom key
+        prompt: 'show a custom prompt',
+      },
+    ],
+  ],
+};
+```
+
+Recommended config names:
+
+- `key`: Modifies the plugin key.
+- `prompt`: Allows user to customize the text in the plugin prompt.
+
+If the user provided a custom configuration, it will be passed as an argument to the plugin constructor.
+
+```javascript
+class MyWatchPlugin {
+  constructor({config}) {}
+}
+```
+
+## Choosing a good key
+
+Jest allows third-party plugins to override some of its built-in feature keys, but not all. Specifically, the following keys are **not overwritable** :
+
+- `c` (clears filter patterns)
+- `i` (updates non-matching snapshots interactively)
+- `q` (quits)
+- `u` (updates all non-matching snapshots)
+- `w` (displays watch mode usage / available actions)
+
+The following keys for built-in functionality **can be overwritten** :
+
+- `p` (test filename pattern)
+- `t` (test name pattern)
+
+Any key not used by built-in functionality can be claimed, as you would expect. Try to avoid using keys that are difficult to obtain on various keyboards (e.g. `é`, `€`), or not visible by default (e.g. many Mac keyboards do not have visual hints for characters such as `|`, `\`, `[`, etc.)
+
+### When a conflict happens
+
+Should your plugin attempt to overwrite a reserved key, Jest will error out with a descriptive message, something like:
+
+> Watch plugin YourFaultyPlugin attempted to register key <q>, that is reserved internally for quitting watch mode. Please change the configuration key for this plugin.
+
+Third-party plugins are also forbidden to overwrite a key reserved already by another third-party plugin present earlier in the configured plugins list (`watchPlugins` array setting). When this happens, you’ll also get an error message that tries to help you fix that:
+
+> Watch plugins YourFaultyPlugin and TheirFaultyPlugin both attempted to register key <x>. Please change the key configuration for one of the conflicting plugins to avoid overlap.

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -67,7 +67,7 @@ export const check = (argv: Argv) => {
 
 export const usage =
   'Usage: $0 [--config=<pathToConfigFile>] [TestPathPattern]';
-export const docs = 'Documentation: https://facebook.github.io/jest/';
+export const docs = 'Documentation: https://jestjs.io/';
 
 export const options = {
   all: {
@@ -85,8 +85,8 @@ export const options = {
   bail: {
     alias: 'b',
     default: undefined,
-    description: 'Exit the test suite immediately upon the first failing test.',
-    type: 'boolean',
+    description:
+      'Exit the test suite immediately after `n` number of failing tests.',
   },
   browser: {
     default: undefined,
@@ -118,7 +118,7 @@ export const options = {
   },
   changedSince: {
     description:
-      'Runs tests related the changes since the provided branch. If the ' +
+      'Runs tests related to the changes since the provided branch. If the ' +
       'current branch has diverged from the given branch, then only changes ' +
       'made locally will be tested. Behaves similarly to `--onlyChanged`.',
     nargs: 1,
@@ -177,9 +177,9 @@ export const options = {
     alias: 'c',
     description:
       'The path to a jest config file specifying how to find ' +
-      'and execute tests. If no rootDir is set in the config, the current ' +
-      'directory is assumed to be the rootDir for the project. This can also ' +
-      'be a JSON encoded value which Jest will use as configuration.',
+      'and execute tests. If no rootDir is set in the config, the directory ' +
+      'containing the config file is assumed to be the rootDir for the project.' +
+      'This can also be a JSON encoded value which Jest will use as configuration.',
     type: 'string',
   },
   coverage: {
@@ -294,6 +294,10 @@ export const options = {
       'A JSON string with map of variables for the haste module system',
     type: 'string',
   },
+  init: {
+    description: 'Generate a basic configuration file',
+    type: 'boolean',
+  },
   json: {
     default: undefined,
     description:
@@ -330,6 +334,13 @@ export const options = {
       'Maps code coverage reports against original source code ' +
       'when transformers supply source maps.\n\nDEPRECATED',
     type: 'boolean',
+  },
+  maxConcurrency: {
+    default: 5,
+    description:
+      'Specifies the maximum number of tests that are allowed to run' +
+      'concurrently. This only affects tests using `test.concurrent`.',
+    type: 'number',
   },
   maxWorkers: {
     alias: 'w',
@@ -385,7 +396,7 @@ export const options = {
     type: 'boolean',
   },
   notifyMode: {
-    default: 'always',
+    default: 'failure-change',
     description: 'Specifies when notifications will appear for test results.',
     type: 'string',
   },
@@ -418,6 +429,11 @@ export const options = {
   },
   preset: {
     description: "A preset that is used as a base for Jest's configuration.",
+    type: 'string',
+  },
+  prettierPath: {
+    default: undefined,
+    description: 'The path to the "prettier" module used for inline snapshots.',
     type: 'string',
   },
   projects: {
@@ -492,15 +508,15 @@ export const options = {
   },
   setupFiles: {
     description:
-      'The paths to modules that run some code to configure or ' +
+      'A list of paths to modules that run some code to configure or ' +
       'set up the testing environment before each test. ',
     type: 'array',
   },
-  setupTestFrameworkScriptFile: {
+  setupFilesAfterEnv: {
     description:
-      'The path to a module that runs some code to configure or ' +
-      'set up the testing framework before each test.',
-    type: 'string',
+      'A list of paths to modules that run some code to configure or ' +
+      'set up the testing framework before each test ',
+    type: 'array',
   },
   showConfig: {
     default: undefined,
@@ -567,14 +583,15 @@ export const options = {
     type: 'array',
   },
   testRegex: {
-    description: 'The regexp pattern Jest uses to detect test files.',
-    type: 'string',
+    description:
+      'A string or array of string regexp patterns that Jest uses to detect test files.',
+    type: 'array',
   },
   testResultsProcessor: {
     description:
       'Allows the use of a custom results processor. ' +
       'This processor must be a node module that exports ' +
-      'a function expecting as the first argument the result object',
+      'a function expecting as the first argument the result object.',
     type: 'string',
   },
   testRunner: {

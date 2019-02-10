@@ -1,8 +1,10 @@
 ---
-
 name: 💥 Regression Report
+labels: ':boom: Regression'
 about: Report unexpected behavior that worked in previous versions
 ---
+
+<!-- Love Jest? Please consider supporting our collective: 👉  https://opencollective.com/jest/donate -->
 
 ## 💥 Regression Report
 

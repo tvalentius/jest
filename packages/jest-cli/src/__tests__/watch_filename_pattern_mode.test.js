@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc. All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,18 +13,25 @@ import {KEYS} from 'jest-watcher';
 
 const runJestMock = jest.fn();
 
-jest.mock('ansi-escapes', () => ({
-  clearScreen: '[MOCK - clearScreen]',
-  cursorDown: (count = 1) => `[MOCK - cursorDown(${count})]`,
-  cursorHide: '[MOCK - cursorHide]',
-  cursorRestorePosition: '[MOCK - cursorRestorePosition]',
-  cursorSavePosition: '[MOCK - cursorSavePosition]',
-  cursorShow: '[MOCK - cursorShow]',
-  cursorTo: (x, y) => `[MOCK - cursorTo(${x}, ${y})]`,
-}));
+jest
+  .mock('ansi-escapes', () => ({
+    cursorDown: (count = 1) => `[MOCK - cursorDown(${count})]`,
+    cursorHide: '[MOCK - cursorHide]',
+    cursorRestorePosition: '[MOCK - cursorRestorePosition]',
+    cursorSavePosition: '[MOCK - cursorSavePosition]',
+    cursorShow: '[MOCK - cursorShow]',
+    cursorTo: (x, y) => `[MOCK - cursorTo(${x}, ${y})]`,
+  }))
+  .mock('jest-util', () => {
+    const {specialChars, ...util} = jest.requireActual('jest-util');
+    return {
+      ...util,
+      specialChars: {...specialChars, CLEAR: '[MOCK - clear]'},
+    };
+  });
 
 jest.mock(
-  '../search_source',
+  '../SearchSource',
   () =>
     class {
       constructor(context) {
@@ -63,7 +70,7 @@ jest.doMock('strip-ansi');
 require('strip-ansi').mockImplementation(str => str);
 
 jest.doMock(
-  '../run_jest',
+  '../runJest',
   () =>
     function() {
       const args = Array.from(arguments);
@@ -125,14 +132,7 @@ describe('Watch mode flows', () => {
     expect(runJestMock).toBeCalled();
 
     // globalConfig is updated with the current pattern
-    expect(runJestMock.mock.calls[0][0].globalConfig).toEqual({
-      onlyChanged: false,
-      passWithNoTests: true,
-      testNamePattern: '',
-      testPathPattern: 'p.*3',
-      watch: true,
-      watchAll: false,
-    });
+    expect(runJestMock.mock.calls[0][0].globalConfig).toMatchSnapshot();
   });
 
   it('Pressing "c" clears the filters', async () => {
